@@ -1,0 +1,11 @@
+.idea
+*.swp
+.vscode/
+
+/example/
+
+.coverage
+coverage.html
+
+/.bin/
+.mypy_cache

@@ -1,0 +1,108 @@
+name: Publish lectures to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'lectures/**'
+      - '.github/workflows/gh-pages.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+
+      - name: Install present and wget
+        run: |
+          go install golang.org/x/tools/cmd/present@latest
+          sudo apt-get update -y
+          sudo apt-get install -y wget curl
+
+      - name: Run present server
+        working-directory: lectures
+        run: |
+          $(go env GOPATH)/bin/present -http=:3999 &
+          echo $! > /tmp/present.pid
+          for i in $(seq 1 40); do
+            if curl -sSf http://127.0.0.1:3999/ >/dev/null; then break; fi
+            sleep 0.5
+          done
+
+      - name: Mirror site via wget
+        run: |
+          mkdir -p site
+          wget -r -np -nH -E -k -p -P site http://127.0.0.1:3999/
+          # Минимальный пост-процесс: поправить абсолютный префикс в slides.js, чтобы CSS подхватывался на project site
+          repo="${GITHUB_REPOSITORY#*/}"
+          owner="${GITHUB_REPOSITORY%/*}"
+          if [ "$repo" = "${owner}.github.io" ]; then
+            PREFIX="/"
+          else
+            PREFIX="/${repo}/"
+          fi
+          if [ -f site/static/slides.js ]; then
+            # Установим правильный префикс в slides.js
+            sed -i "s|var PERMANENT_URL_PREFIX = '/static/';|var PERMANENT_URL_PREFIX = '${PREFIX}static/';|" site/static/slides.js || true
+          fi
+          # Явно докачаем динамически подключаемые ресурсы, которые wget не видит в HTML
+          mkdir -p site/static
+          (curl -fsSL http://127.0.0.1:3999/static/styles.css -o site/static/styles.css || \
+           wget -q -O site/static/styles.css http://127.0.0.1:3999/static/styles.css || true)
+          (curl -fsSL http://127.0.0.1:3999/play.js -o site/play.js || \
+           wget -q -O site/play.js http://127.0.0.1:3999/play.js || true)
+          # Логирование
+          echo "::group::Mirror debug"
+          echo "GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
+          echo "owner=${owner} repo=${repo} PREFIX=${PREFIX}"
+          echo "== tree site (depth 2) =="
+          find site -maxdepth 2 -type d | sort
+          echo "== static listing =="
+          ls -la site/static || true
+          if [ -f site/static/slides.js ]; then
+            echo "== slides.js PERMANENT_URL_PREFIX =="
+            grep -n "PERMANENT_URL_PREFIX" site/static/slides.js || true
+          fi
+          if [ -f site/static/styles.css ]; then
+            echo "styles.css present: $(wc -c < site/static/styles.css) bytes"
+          else
+            echo "styles.css missing under site/static" >&2
+          fi
+          if [ -f site/play.js ]; then
+            echo "play.js present: $(wc -c < site/play.js) bytes"
+          else
+            echo "play.js missing under site/" >&2
+          fi
+          echo "== sample lecture HTML referencing slides.js =="
+          find site -name 'lecture.slide.html' | head -n 3 | while read -r f; do
+            echo "--- $f"; grep -n "slides.js\|<base" "$f" || true; done
+          echo "::endgroup::"
+
+      - name: Stop present
+        if: always()
+        run: |
+          if [ -f /tmp/present.pid ]; then kill $(cat /tmp/present.pid) || true; fi
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
