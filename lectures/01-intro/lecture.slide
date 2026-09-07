@@ -104,6 +104,16 @@ Language
 : Автоматическое форматирование.
 : goimports
 
+* Переменные
+
+    s := ""
+    var s string
+    var s = ""
+    var s string = ""
+
+.link https://go.dev/blog/declaration-syntax Почему тип пишется после названия переменной
+
+
 * echo
 
 .play -edit echo/echo.go
@@ -196,15 +206,6 @@ Language
 	arr2[0] = 99
 	fmt.Println(arr)  // [99 2 3]
 	fmt.Println(arr2) // [99 2 3]
-
-* Переменные
-
-    s := ""
-    var s string
-    var s = ""
-    var s string = ""
-
-.link https://go.dev/blog/declaration-syntax Почему тип пишется после названия переменной
 
 * uniq
 
