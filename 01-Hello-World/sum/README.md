@@ -8,7 +8,7 @@
    Система создаст для вас личный репозиторий.
    Перейдите в него по ссылке My Repo на https://app.manytask.org/hse-go-2026-fall/
 
-1. **(Один раз)** [Настройте](https://gitlab.manytask.org/-/profile/keys) ssh ключ. Если вы не знаете как это сделать,
+1. **(Один раз)** [Настройте](https://gitlab.manytask.org/-/user_settings/ssh_keys) ssh ключ. Если вы не знаете как это сделать,
    воспользуйтесь инструкцией на странице по ссылке.
 
 2. **(Один раз)** Склонируйте ваш личный репозиторий
@@ -25,14 +25,14 @@
 
    ```shell
    # Из корня репозитория.
-   go test ./sum/...
+   go test ./01-Hello-World/sum/...
    ```
 
 5. Проверьте, что код проходит линтер. Линтер нужно установить [по инструкции](https://github.com/golangci/golangci-lint#binary).
 
    ```shell
    # Из корня репозитория.
-   golangci-lint run ./sum/...
+   golangci-lint run ./01-Hello-World/sum/...
    ```
 
 6. Добавьте ваши изменения в гит и сделайте коммит.
