@@ -7,5 +7,4 @@
 .coverage
 coverage.html
 
-/.bin/
 .mypy_cache

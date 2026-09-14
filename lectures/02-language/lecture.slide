@@ -1,0 +1,634 @@
+Функции, типы, пакеты и память
+Лекция 2
+
+Максим Иванов
+
+* После лекции
+
+- Писать функции с несколькими результатами и обрабатывать ошибки
+- Объявлять собственные типы и структуры
+- Понимать указатели, `new` и время жизни значений
+- Разбивать программу на пакеты с понятным API
+
+* Объявления
+
+В Go есть четыре вида объявлений:
+
+  var   const   type   func
+
+Порядок package-level объявлений в файле не определяет порядок их использования.
+
+  var circumference = 2 * Pi * radius
+  const Pi = 3.141592653589793
+  var radius = 10.0
+
+Объявление связывает имя с типом, значением или функцией. Package-level declarations доступны из всех файлов того же пакета.
+
+* Ключевые слова
+
+В Go 25 ключевых слов. Их нельзя использовать как имена.
+
+  break        default      func         interface    select
+  case         defer        go           map          struct
+  chan         else         goto         package      switch
+  const        fallthrough  if           range        type
+  continue     for          import       return       var
+
+* Predeclared identifiers
+
+Эти имена объявлены заранее, но не зарезервированы:
+
+  true false iota nil
+  any comparable int int8 int16 int32 int64
+  uint uint8 uint16 uint32 uint64 uintptr
+  float32 float64 complex64 complex128
+  bool byte rune string error
+  min max make len cap new append clear copy close delete
+  complex real imag panic recover print println
+
+Их можно переопределять по обычным правилам
+
+  // just example, don't do this
+  // Backward compatibility
+  var true = false
+
+* var и zero value
+
+Общая форма:
+
+  var name type = expression
+
+Тип или expression можно опустить, но не оба сразу.
+
+  var retries int                 // 0
+  var ready bool                  // false
+  var title string                // ""
+  var timeout = 5 * time.Second   // time.Duration
+  var file, err = os.Open(name)   // *os.File, error
+
+Каждый тип имеет _zero_value_. Объявленная переменная всегда инициализирована.
+
+* Короткое объявление
+
+  i, j := 0, 1
+
+`:=` работает только внутри функций.
+
+В том же block можно переиспользовать существующее имя, если появляется хотя бы одно новое:
+
+  in, err := os.Open(inputName)
+  // ...
+  out, err := os.Create(outputName) // out новое, err переиспользован
+
+  in, err := os.Open(otherName)     // compile error: no new variables
+
+Redeclaration относится только к тому же lexical block. Во вложенном block такое же имя создаёт новую переменную.
+
+Вопрос: почему объявление `out, err := ...` корректно, а повторное `in, err := ...` нет?
+
+* Область видимости
+
+Scope имени определяется синтаксическими блоками программы.
+
+  package main
+
+  var language = "Go" // package scope
+
+  func printTwice() {
+      message := "hello" // function body scope
+      for i := 0; i < 2; i++ {
+          fmt.Println(i, message) // loop block scope
+      }
+  }
+
+Имя видно во вложенных блоках, пока его не затенит новое объявление.
+
+* Shadowing
+
+.play scope/main.go
+
+  $ go run ./02-language/scope
+  HELLO
+  hello
+
+* Shadowing: ловушка
+
+Одинаковое написание не означает одну переменную.
+
+  var cwd string
+
+  func init() {
+      cwd, err := os.Getwd() // новое локальное cwd
+      if err != nil {
+          log.Fatal(err)
+      }
+      log.Print(cwd)         // локальное значение
+  }
+
+После `init` package-level `cwd` всё ещё равно `""`.
+
+* Scope initializer в if
+
+Имя из initializer доступно во всех ветках, но не после `if`.
+
+  if file, err := os.Open(name); err != nil {
+      return err
+  } else {
+      return readConfig(file)
+  }
+
+Если файл нужен дальше, объявление должно находиться снаружи:
+
+  file, err := os.Open(name)
+  if err != nil {
+      return err
+  }
+  return readConfig(file)
+
+* Указатели
+
+Указатель хранит адрес переменной.
+
+  x := 1
+  p := &x         // *int
+  fmt.Println(*p) // 1
+  *p = 2
+  fmt.Println(x)  // 2
+
+Zero value указателя равен `nil`.
+
+  var p *int
+  fmt.Println(p == nil) // true
+  fmt.Println(*p)       // panic: nil pointer dereference
+
+* Функции
+
+  func name(parameterList) resultList {
+      body
+  }
+
+  func hypot(x, y float64) float64 {
+      return math.Sqrt(x*x + y*y)
+  }
+
+Соседние параметры одного типа можно объединять:
+
+  func move(x, y int, label string) Point
+
+Go всегда передаёт аргументы по значению.
+
+* Function values
+
+Функцию можно хранить в переменной и передавать как значение.
+
+  func increment(value int) int { return value + 1 }
+
+  var transform func(int) int
+  transform = increment
+  fmt.Println(transform(10)) // 11
+
+Zero value function value равен `nil`. Вызов nil function приводит к panic.
+
+* Closures: что напечатает программа?
+
+.play counter/main.go
+
+* Closures: вывод
+
+  $ go run ./02-language/counter
+  11
+  12
+  101
+
+Function literal видит переменные окружающей функции.
+
+Каждый вызов `counter` создаёт независимое состояние.
+
+* Range-переменные с Go 1.22
+
+.play rangevars/main.go /func main/,/^}/
+
+  $ go run ./02-language/rangevars
+  ABC
+
+С `:=` каждая итерация создаёт новую `value`.
+
+До Go 1.22 этот код печатал `CCC`.
+
+* Рекурсия
+
+Рекурсивной функции нужен базовый случай.
+
+  func sum(root *Tree) int {
+      if root == nil {
+          return 0
+      }
+      return root.Value + sum(root.Left) + sum(root.Right)
+  }
+
+Для recursive closure имя объявляют до присваивания:
+
+  var visit func(*Tree)
+  visit = func(node *Tree) { /* ... visit(node.Left) ... */ }
+
+* Несколько результатов
+
+Функция часто возвращает полезное значение и ошибку:
+
+  func parsePort(text string) (uint16, error) {
+      value, err := strconv.ParseUint(text, 10, 16)
+      if err != nil {
+          return 0, err
+      }
+      return uint16(value), nil
+  }
+
+Результаты другой функции можно передать напрямую:
+
+  func parseDefaultPort() (uint16, error) {
+      return parsePort("8080")
+  }
+
+* Именованные результаты
+
+Имена результатов документируют короткую сигнатуру:
+
+  func split(total int) (quotient, remainder int) {
+      quotient = total / 10
+      remainder = total % 10
+      return quotient, remainder
+  }
+
+`return` без значений допустим, но в длинной функции ухудшает читаемость.
+
+  func split(total int) (quotient, remainder int) {
+      quotient = total / 10
+      remainder = total % 10
+      return // работает, но явный return проще читать
+  }
+
+* Ошибки как значения
+
+Ожидаемая неудача возвращается как `error`.
+
+  balance, err := wallet.NewBalance(initial)
+  if err != nil {
+      return err
+  }
+
+- `nil` означает успех
+- Ошибку проверяют сразу после вызова
+- `panic` оставляют для нарушенного invariant или невозможного состояния
+
+Текст ошибки начинается со строчной буквы: вызывающий код может добавить контекст.
+
+* Контекст ошибки
+
+  config, err := loadConfig(path)
+  if err != nil {
+      return fmt.Errorf("load config %q: %w", path, err)
+  }
+
+`%w` сохраняет исходную ошибку в цепочке.
+
+  if errors.Is(err, fs.ErrNotExist) {
+      // отдельная реакция на отсутствующий файл
+  }
+
+Sentinel error можно сравнивать через `errors.Is`:
+
+  if errors.Is(err, io.EOF) {
+      break
+  }
+
+* Объявление типа
+
+Named type создаёт новый тип:
+
+  type Celsius float64
+  type Fahrenheit float64
+
+  var c Celsius = 20
+  var f Fahrenheit = Fahrenheit(c) // явное преобразование
+
+Alias даёт другое имя существующему типу:
+
+  type byte = uint8
+  type rune = int32
+
+Named types помогают не смешивать значения с разным смыслом.
+
+* Константы и iota
+
+  const (
+      Sunday Weekday = iota // 0
+      Monday                // 1
+      Tuesday               // 2
+  )
+
+  type Flags uint
+  const (
+      FlagUp Flags = 1 << iota // 1
+      FlagBroadcast            // 2
+      FlagLoopback             // 4
+      FlagPointToPoint         // 8
+  )
+
+Пропущенное выражение повторяет предыдущее. `iota` равен индексу текущей спецификации констант (`ConstSpec`), начиная с 0.
+
+* iota: что чему равно?
+
+Первый вариант:
+
+  const (
+      A = iota
+      B
+      _
+      C
+  )
+
+Второй вариант:
+
+  const (
+      X = 100
+      Y, Z = iota, iota + 10
+      W, V
+      Q = iota
+      R = 2
+      T
+  )
+
+* Untyped constants
+
+  const secondsPerDay = 24 * 60 * 60
+
+Untyped constant получает тип из контекста, если значение представимо:
+
+  var seconds int64 = secondsPerDay
+  var duration time.Duration = secondsPerDay * time.Second
+
+  const value = 256                 // OK: untyped integer
+  var enough uint16 = value         // OK
+  var tooSmall uint8 = value        // compile error: 256 overflows uint8
+
+Это исключение, а не неявное преобразование между named types.
+
+  var c Celsius = 20
+  var f Fahrenheit = c // compile error
+
+* Большие untyped constants
+
+  const (
+      _ = 1 << (10 * iota)
+      KiB
+      MiB
+      GiB
+      TiB
+      PiB
+      EiB
+      ZiB
+      YiB
+  )
+
+Реализация обязана поддерживать точные integer constants как минимум с 256 значащими битами.
+
+Если внутреннего лимита не хватает, компилятор сообщает ошибку: integer constant не округляется и не переполняется.
+
+Вопрос: скомпилируется ли `fmt.Println(YiB / ZiB)` и что он напечатает?
+
+* Структуры
+
+Структура объединяет значения с разным смыслом.
+
+  type Account struct {
+      Owner   string
+      Balance int64
+  }
+
+  var account Account
+  fmt.Println(account.Owner)   // ""
+  fmt.Println(account.Balance) // 0
+
+Zero value структуры состоит из zero values её полей.
+
+* Struct literals
+
+  type Point struct {
+      X int
+      Y int
+  }
+
+  p := Point{1, 2}
+  q := Point{X: 1, Y: 2}
+  r := Point{Y: 5} // X == 0
+
+Вне небольших локальных типов keyed literal устойчивее к добавлению и перестановке полей.
+
+* Параметры передаются по значению
+
+Функция получает копию каждого аргумента.
+
+  func resetValue(value int) {
+      value = 0
+  }
+
+  func resetPointer(value *int) {
+      *value = 0
+  }
+
+Копия указателя всё ещё указывает на исходную переменную.
+
+Вопрос: какая из функций может изменить переменную вызывающего кода?
+
+* Рекурсивные структуры
+
+  type Node struct {
+      Value int
+      Next  *Node
+  }
+
+Поле `Next Node` невозможно: размер `Node` зависел бы от самого себя.
+
+Размер указателя известен, поэтому `Next *Node` завершает определение типа.
+
+  third := &Node{Value: 3}
+  second := &Node{Value: 2, Next: third}
+  first := &Node{Value: 1, Next: second}
+
+* new
+
+`new(T)` создаёт zero value типа `T` и возвращает указатель `*T`.
+
+  func newInt() *int {
+      return new(int)
+  }
+
+Адрес локальной переменной имеет ту же семантику:
+
+  func newInt() *int {
+      value := 0
+      return &value
+  }
+
+`new` не означает «обязательно выделить память на heap».
+
+* Dangling pointer в C++
+
+  const PointsData* fullPointsData = nullptr;
+  if (fullData) {
+      auto value = getPointsData();
+      fullPointsData = &value;
+  }
+  auto table = getPointsByDocument(docID, fullPointsData);
+
+Что не так с `fullPointsData`?
+
+* Время жизни переменной
+
+Переменная живёт, пока программа может до неё добраться.
+
+  var global *int
+
+  func remember() {
+      value := 42
+      global = &value
+  }
+
+Лексический block закончился, но значение остаётся достижимым через `global`.
+
+Garbage collector может освободить память недостижимых объектов.
+
+* Время жизни в C++ и Go
+
+В C++ `value` уничтожается при выходе из block. Указатель не равен `nullptr`, но объект по этому адресу больше не существует.
+
+В Go адрес локальной переменной можно безопасно вернуть:
+
+  func loadPoints() *PointsData {
+      value := getPointsData()
+      return &value
+  }
+
+Go сохраняет значение, пока оно достижимо. Конкретное размещение выбирает компилятор.
+
+* Escape analysis: что попадёт в heap?
+
+.play escape/main.go
+
+* Escape analysis: вывод программы
+
+  $ go run ./02-language/escape
+  42
+  42
+
+Обе функции корректны: адрес локальной переменной можно вернуть, а `new(int)` не обещает конкретное место хранения.
+
+* Escape analysis: диагностика компилятора
+
+Компилятор решает, где хранить значение. Это оптимизация, а не семантика языка.
+
+  $ go build -gcflags=-m=2 -o /dev/null ./02-language/escape
+  ... value escapes to heap in localPointer
+  ... moved to heap: value
+
+Формулировки в выводе и конкретное размещение могут меняться между версиями Go.
+
+Правильность программы не должна зависеть от stack или heap.
+
+* Пакеты
+
+Пакет состоит из одного или нескольких `.go` файлов в одной директории.
+
+- Все обычные файлы директории объявляют один package
+- Имя с заглавной буквы доступно другим пакетам
+- Import cycles запрещены
+- Импортируется пакет целиком, а не отдельная функция
+- Имя вместе с package должно читаться естественно: `http.Client`, не `http.HTTPClient`
+
+Файлы `foo_test.go` могут использовать package `foo` или `foo_test`.
+
+* Exported identifiers: пакет
+
+.code exported/example.go
+
+* Exported identifiers: клиент пакета
+
+.play exported-demo/main.go /func main/,/^}/
+
+  $ go run ./02-language/exported-demo
+  geometry: X=7 gravity=9.8 distance=0.0
+
+Видимость определяется первой Unicode-буквой имени.
+
+Клиент видит `Gravity`, `Name`, `Point`, `X` и `Distance`, но не может обратиться к `y` и `helper`.
+
+* Один пакет, несколько файлов: types.go
+
+.code tempconv/types.go
+
+* Один пакет, несколько файлов: conv.go
+
+.code tempconv/conv.go
+
+* Использование package tempconv
+
+.play tempconv-demo/main.go /func main/,/^}/
+
+  $ go run ./02-language/tempconv-demo
+  -40 °C = -40 °F
+  212 °F = 100 °C
+
+Файлы компилируются вместе. Порядок файлов не влияет на доступность объявлений.
+
+* Package и module
+
+Package задаёт пространство имён и единицу компиляции.
+
+Module задаёт import path проекта и версии зависимостей.
+
+  module hse-go/lectures
+
+  import "hse-go/lectures/02-language/tempconv"
+
+Базовые команды из корня module:
+
+  go test ./...
+  go mod tidy
+
+Версии модулей разберём в отдельной лекции.
+
+* Инициализация пакета: что выполнится первым?
+
+.play initorder/main.go
+
+* Инициализация пакета: вывод
+
+  $ go run ./02-language/initorder
+  init 1 2
+  main 2
+
+Package-level variables вычисляются в порядке зависимостей, затем вызываются функции `init`.
+
+- Сначала инициализируются импортированные пакеты
+- Затем package-level variables текущего пакета
+- Затем `init` в текущем пакете
+- После этого запускается `main`
+
+Не прячьте обычную бизнес-логику в `init`.
+
+* Главное
+
+- Ошибка является обычным результатом функции
+- Указатель позволяет изменить значение, но сам тоже передаётся по значению
+- `new(T)` возвращает указатель на zero value и не обещает heap
+- Время жизни определяется достижимостью
+- Package формирует API из exported identifiers
+
+* Вопросы для самопроверки
+
+1. Чем `var x int` отличается от `x := 0`?
+2. Почему можно вернуть `&local` из функции?
+3. Что копируется при вызове функции с аргументом `*Account`?
+4. Чем named type отличается от alias?
+5. В каком порядке инициализируются package-level variables?
+6. Почему `fullPointsData` в C++ остаётся не `nullptr`, но уже недействителен?

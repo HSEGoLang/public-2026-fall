@@ -47,9 +47,9 @@ go install ./urlfetch/...
 
 ### Линтер
 
-Установите [golangci-lint](https://github.com/golangci/golangci-lint), если вы ещё этого не сделали, и проверьте решение перед отправкой!
+Установите [golangci-lint](https://github.com/golangci/golangci-lint), если вы ещё этого не сделали, и проверьте решение перед отправкой:
 ```
-golangci-lint -v run ./urlfetch/...
+golangci-lint -v run ./01-Hello-World/urlfetch/...
 ```
 
 ### Walkthrough

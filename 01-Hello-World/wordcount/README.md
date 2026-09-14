@@ -52,9 +52,9 @@ go install ./wordcount/...
 
 ### Линтер
 
-Установите [golangci-lint](https://github.com/golangci/golangci-lint) и проверьте решение перед отправкой!
+Установите [golangci-lint](https://github.com/golangci/golangci-lint), если вы ещё этого не сделали, и проверьте решение перед отправкой:
 ```
-golangci-lint -v run ./wordcount/...
+golangci-lint -v run ./01-Hello-World/wordcount/...
 ```
 
 ### Walkthrough

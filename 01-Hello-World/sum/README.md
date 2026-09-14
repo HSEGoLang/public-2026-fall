@@ -28,7 +28,7 @@
    go test ./01-Hello-World/sum/...
    ```
 
-5. Проверьте, что код проходит линтер. Линтер нужно установить [по инструкции](https://github.com/golangci/golangci-lint#binary).
+5. Проверьте, что код проходит линтер. Линтер нужно установить с помощью команды `make setup` или [по инструкции](https://github.com/golangci/golangci-lint#binary).
 
    ```shell
    # Из корня репозитория.

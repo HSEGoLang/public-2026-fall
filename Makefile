@@ -1,11 +1,9 @@
 GO_TOOLCHAIN_VERSION := go1.27.1
 GOLANGCI_LINT_VERSION := v2.13.2
-GOLANGCI_LINT_DIR := $(CURDIR)/.bin/golangci-lint-$(GOLANGCI_LINT_VERSION)
-GOLANGCI_LINT := $(GOLANGCI_LINT_DIR)/golangci-lint
+GOLANGCI_LINT := $(shell go env GOPATH)/bin/golangci-lint
 GO_MODULES := . lectures lectures/12-lowlevel/unix 15-Bonus/wasm/flappygopher
 
 export GOTOOLCHAIN := $(GO_TOOLCHAIN_VERSION)
-export PATH := $(GOLANGCI_LINT_DIR):$(PATH)
 
 -include Makefile.private
 
@@ -46,8 +44,7 @@ download-deps: ##@Environment Download dependencies for all Go modules
 	done
 
 $(GOLANGCI_LINT):
-	@mkdir -p "$(@D)"
-	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(@D)" "$(GOLANGCI_LINT_VERSION)"
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$$(go env GOPATH)/bin" "$(GOLANGCI_LINT_VERSION)"
 
 .PHONY: format
 format: | $(GOLANGCI_LINT) ###@Code Format files
