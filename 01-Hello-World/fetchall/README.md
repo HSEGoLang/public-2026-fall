@@ -7,6 +7,10 @@
 Текст ответов можно игнорировать.
 Вместо этого можно залогировать прогресс в произвольном формате.
 
+За основу можно взять [пример `fetchall` из первой лекции](../../lectures/01-intro/fetchall/fetchall.go). В `01-Hello-World/fetchall/main.go` нужны импорты и **обе** функции: `main` и `fetch`. Сохраните строку `//go:build !solution` и пустую строку после неё. `go fetch(...)` запускает обработку очередного URL, а чтение из `ch` ждёт результаты; подробное устройство горутин и каналов разберём позже. Для первого ДЗ достаточно собрать и запустить лекционный пример, затем применить [форматтеры и проверки](../sum/README.md).
+
+Все команды ниже выполняются из корня личного репозитория. На Windows используйте **Git Bash**.
+
 Пример:
 ```
 $ fetchall https://gopl.io golang.org http://golang.org
@@ -24,19 +28,19 @@ Get golang.org: unsupported protocol scheme ""
 Для запуска тестов нужно выполнить следующую команду:
 
 ```
-go test -v ./fetchall/...
+go test -v ./01-Hello-World/fetchall/...
 ```
 
 ### Запуск программы
 
 ```
-go run -v ./fetchall/main.go
+go run ./01-Hello-World/fetchall https://go.dev https://go.dev/doc/
 ```
 
 ### Компиляция
 
 ```
-go install ./fetchall/...
+go install ./01-Hello-World/fetchall
 ```
 
 После выполнения в `$GOPATH/bin` появится исполняемый файл с именем `fetchall`.

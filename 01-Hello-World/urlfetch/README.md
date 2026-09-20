@@ -5,6 +5,10 @@
 
 При обработке невалидного URL'а программа должна завершаться с ненулевым exit кодом.
 
+За основу можно взять [пример `urlfetch` из первой лекции](../../lectures/01-intro/urlfetch/urlfetch.go): он уже показывает весь алгоритм. Перенесите импорты и тело `main` в `01-Hello-World/urlfetch/main.go`, сохранив строку `//go:build !solution` и пустую строку после неё. Затем запустите форматтеры, тесты и линтер по [инструкции sum](../sum/README.md). На первом ДЗ можно пользоваться кодом лекции.
+
+Все команды ниже выполняются из корня личного репозитория. На Windows используйте **Git Bash**.
+
 ### Примеры
 
 Успешный запуск:
@@ -28,19 +32,19 @@ fetch: Get golang.org: unsupported protocol scheme ""
 Для запуска тестов нужно выполнить следующую команду:
 
 ```
-go test -v ./urlfetch/...
+go test -v ./01-Hello-World/urlfetch/...
 ```
 
 ### Запуск программы
 
 ```
-go run -v ./urlfetch/main.go
+go run ./01-Hello-World/urlfetch https://go.dev
 ```
 
 ### Компиляция
 
 ```
-go install ./urlfetch/...
+go install ./01-Hello-World/urlfetch
 ```
 
 После выполнения в `$GOPATH/bin` появится исполняемый файл с именем `urlfetch`.

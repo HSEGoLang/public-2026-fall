@@ -1,0 +1,671 @@
+Коллекции, строки и данные
+Лекция 3
+
+Максим Иванов
+
+* После лекции
+
+- Понимать, когда slices разделяют один backing array
+- Выбирать между array, slice и map
+- Корректно обрабатывать UTF-8, включая невалидные байты
+- Преобразовывать структуры Go в JSON и обратно
+
+* Arrays
+
+Длина входит в тип массива.
+
+  var empty [3]int
+  values := [3]int{1, 2, 3}
+  short := [3]int{1, 2}       // [1 2 0]
+  inferred := [...]int{1, 2, 3}
+  sparse := [...]int{3: -1, 5: -100}
+
+  fmt.Printf("%T\n", values)   // [3]int
+  fmt.Printf("%T\n", inferred) // [3]int
+
+`[3]int` и `[4]int` являются разными типами.
+
+Массивы можно сравнивать через `==`, если типы совместимы, а элементы сравнимы: `[3]int` — да, `[3][]int` — нет.
+
+* Свой тип массива
+
+Можно объявить named type с underlying type array:
+
+  type RGB [3]uint8
+
+  color := RGB{255, 128, 0}
+  color[1] = 64
+  for index, value := range color {
+      fmt.Println(index, value)
+  }
+  // 0 255
+  // 1 64
+  // 2 0
+
+Индексация, `len` и `range` сохраняются. Размер массива по-прежнему фиксирован.
+
+Объявить свою структуру с полем-массивом тоже можно, но операторы `[]` и `range` к ней автоматически не добавятся.
+
+* Arrays являются значениями
+
+Присваивание и передача массива в функцию копируют все элементы.
+
+  func zeroCopy(values [3]int) {
+      values = [3]int{}
+  }
+
+  func zeroOriginal(values *[3]int) {
+      *values = [3]int{}
+  }
+
+Большие массивы редко передают напрямую. Обычно программа работает со slice.
+
+Вопрос: какая из двух функций изменит исходный массив?
+
+* Slice
+
+Slice описывает часть backing array.
+
+  type sliceHeader struct {
+      data *T
+      len  int
+      cap  int
+  }
+
+Это модель для рассуждений, а не объявление настоящего runtime-типа.
+
+  values := [5]int{10, 20, 30, 40, 50}
+  middle := values[1:4] // [20 30 40], len=3, cap=4
+  other := middle
+  fmt.Println(other)   // ???
+
+Копирование slice копирует descriptor. Элементы остаются общими.
+
+* Границы slice
+
+  values := make([]int, 10) // [0 0 0 0 0 0 0 0 0 0], len=10, cap=10
+  values = values[:0]       // [], len=0, cap=10
+  values = values[:10]      // [0 0 0 0 0 0 0 0 0 0], len=10, cap=10
+  values = values[:5:5]     // [0 0 0 0 0], len=5, cap=5
+  values = values[:10]      // panic: cap == 5
+
+Full slice expression ограничивает capacity:
+
+  clipped := values[low:high:max]
+  len(clipped) == high - low
+  cap(clipped) == max - low
+
+Некорректные константные границы могут быть отвергнуты при компиляции. Если выход за границы определяется при выполнении, возникает panic.
+
+* nil и empty slice
+
+  var nilSlice []int
+  emptySlice := []int{}
+  madeSlice := make([]int, 0)
+
+  fmt.Println(nilSlice == nil)   // true
+  fmt.Println(emptySlice == nil) // false
+  fmt.Println(len(nilSlice))     // 0
+  fmt.Println(len(emptySlice))   // 0
+
+Slices нельзя сравнивать друг с другом. Сравнение с `nil` разрешено.
+
+Для большинства операций nil и empty slice ведут себя одинаково.
+
+* make и append
+
+  make([]T, length)
+  make([]T, length, capacity)
+
+  var values []int
+  values = append(values, 1)
+  values = append(values, 2, 3)
+
+Если capacity хватает для добавляемых элементов, `append` использует прежний backing array; иначе выделяет новый.
+
+Всегда сохраняйте его результат:
+
+  values = append(values, item)
+
+* Общий backing array: что напечатает программа?
+
+.play slicealias/main.go /func main/,/^}/
+
+* Общий backing array: вывод
+
+  $ go run ./03-collections/slicealias
+  before copy: [0 0] len=2 cap=4
+  after copy: [1 2] len=2 cap=4
+  [9 2] [9 2 3]
+  [9 2] [7 2 4]
+  [9 2] [5 2]
+
+Если capacity хватает, `append` пишет в существующий array.
+
+Full slice expression может запретить повторное использование свободной capacity:
+
+  isolated := append(source[:len(source):len(source)], value)
+
+Для независимой копии обычно проще использовать `slices.Clone`.
+
+* copy и clone
+
+  clone := slices.Clone(source)
+
+Копирование элементов через встроенную функцию:
+
+  clone := make([]int, len(source))
+  copy(clone, source)
+
+Короткая идиома, часто встречающаяся в старом коде:
+
+  clone := append([]int(nil), source...)
+
+Копирование shallow: указатели внутри элементов продолжают указывать на прежние объекты.
+
+Отличие для пустого входа: `slices.Clone` сохраняет nil, `make` всегда создаёт non-nil slice, а идиома с `append` выше возвращает nil и для пустого non-nil slice.
+
+* In-place reverse
+
+Два индекса движутся навстречу друг другу:
+
+  func reverse(values []int) {
+      left, right := 0, len(values)-1
+      for left < right {
+          values[left], values[right] = values[right], values[left]
+          left++
+          right--
+      }
+  }
+
+Функция меняет общий backing array. Отдельный результат возвращать не нужно.
+
+  values := []int{1, 2, 3}
+  reverse(values)
+  fmt.Println(values) // [3 2 1]
+
+* Удаление элемента
+
+  func remove(values []int, index int) []int {
+      copy(values[index:], values[index+1:])
+      return values[:len(values)-1]
+  }
+
+Для элементов с указателями полезно обнулить освободившийся slot:
+
+  copy(values[index:], values[index+1:])
+  clear(values[len(values)-1:]) // zero value в последнем slot
+  return values[:len(values)-1]
+
+`clear(slice)` заменяет элементы на zero value (`0`, `nil`, ...), сохраняя `len` и `cap`.
+
+Без очистки backing array может удерживать уже ненужный объект.
+
+* Slice как stack
+
+  stack = append(stack, value) // push
+
+  if len(stack) == 0 {
+      return errEmptyStack
+  }
+  top := stack[len(stack)-1]
+  stack = stack[:len(stack)-1] // pop
+
+Проверка длины должна предшествовать обращению по индексу.
+
+Этот рецепт пригодится для postfix calculator и Forth.
+
+* Slice как queue
+
+Добавление в конец:
+
+  queue = append(queue, value)
+
+Снятие первого элемента:
+
+  if len(queue) == 0 {
+      return errEmptyQueue
+  }
+  front := queue[0]
+  clear(queue[:1]) // убираем старую ссылку, если элементы содержат указатели
+  queue = queue[1:]
+
+Снятие первого элемента занимает O(1). Reslice удерживает весь backing array: GC не освобождает его начало отдельно.
+
+Для `[]int` очистка не нужна; для `[]*Item` она убирает ссылку из старой ячейки. Сам массив остаётся в памяти.
+
+Для длинной очереди нужен периодический compact или специализированная структура.
+
+* Variadic functions
+
+Variadic parameter внутри функции является slice.
+
+  func sum(values ...int) int {
+      total := 0
+      for _, value := range values {
+          total += value
+      }
+      return total
+  }
+
+  sum()
+  sum(1, 2, 3)
+  sum(existing...)
+
+  sum(0, existing...) // compile error: нельзя смешать так аргументы
+
+* Свой обход через range
+
+С Go 1.23 `range` умеет обходить функцию-итератор:
+
+  func numbers(yield func(int) bool) {
+      for value := 1; value <= 3; value++ {
+          if !yield(value) {
+              return
+          }
+      }
+  }
+
+  for value := range numbers {
+      fmt.Println(value) // 1, затем 2
+      if value == 2 { break }
+  }
+
+`yield` передаёт очередное значение в тело цикла. После `false` итератор должен прекратить вызовы `yield`.
+
+Так можно описать обход своей структуры. Это дополнительный пример; для текущего ДЗ достаточно обычных циклов.
+
+* Maps
+
+  ages := make(map[string]int)
+
+  ages := map[string]int{
+      "alice":   31,
+      "charlie": 34,
+  }
+
+  ages["bob"] = 25
+  ages["alice"]++
+
+Map хранит пары key-value. Тип ключа должен быть comparable; тип значения — любой.
+
+  groups := map[string][]int{"A": {1, 2}} // slice допустим как значение
+
+Вопрос: почему значения map не обязаны быть хэшируемыми? Нужно ли самим писать hash-функцию для ключа?
+
+* Операции с map
+
+  age := ages["alice"]
+  missing := ages["nobody"] // 0: zero value типа int
+
+  delete(ages, "alice")
+  clear(ages)
+
+Map element не адресуем:
+
+  _ = &ages["bob"] // compile error
+
+Реализация map может перемещать элементы при росте.
+
+Вопрос: как отличить отсутствующий ключ от ключа, у которого сохранено значение `0`?
+
+* Comma-ok и nil map
+
+  ages := map[string]int{"bob": 0}
+  age, ok := ages["bob"]
+  fmt.Println(age, ok) // 0 true: ключ есть
+  age, ok = ages["nobody"]
+  fmt.Println(age, ok) // 0 false: ключа нет
+
+  var empty map[string]int
+  fmt.Println(len(empty))   // 0
+  fmt.Println(empty["bob"]) // 0
+  delete(empty, "bob")      // ok
+  empty["bob"] = 25         // panic: assignment to nil map
+
+Чтение nil map безопасно. Перед записью map нужно создать.
+
+* Порядок обхода map
+
+Порядок iteration не определён и может меняться между обходами.
+
+  for name, age := range ages {
+      fmt.Println(name, age)
+  }
+
+Для стабильного вывода собираем и сортируем ключи:
+
+  keys := make([]string, 0, len(ages))
+  for name := range ages {
+      keys = append(keys, name)
+  }
+  slices.Sort(keys)
+
+  for _, name := range keys {
+      fmt.Println(name, ages[name])
+  }
+
+Вопрос: можно ли сравнивать такой вывод с golden file без сортировки?
+
+* Set
+
+В стандартной библиотеке нет отдельного set type.
+
+  seen := make(map[string]struct{})
+  seen["alice"] = struct{}{}
+
+  _, ok := seen["alice"]
+  delete(seen, "alice")
+
+Вариант `map[T]bool` короче в некоторых алгоритмах. `map[T]struct{}` не хранит отдельное значение.
+
+* Zero-size type
+
+`struct{}` имеет размер 0 и не несёт данных. Все значения `struct{}` равны.
+
+  set := make(map[string]struct{})
+  set["ready"] = struct{}{}
+
+В `map[T]struct{}` нет отдельного payload для value. Сама map всё равно хранит buckets и служебные данные.
+
+* Миллиард элементов, ноль байт
+
+  p, q := new(int), new(int)
+  fmt.Println(p == q) // false
+
+  first, second := new(struct{}), new(struct{})
+  fmt.Println(first == second) // true или false
+
+Спецификация разрешает указателям на разные zero-size variables сравниваться как равными, так и различными.
+
+  values := [1_000_000_000]struct{}{}
+  fmt.Println(unsafe.Sizeof(values)) // 0
+
+Адрес zero-size value не подходит на роль уникального идентификатора.
+
+* Comparable structs
+
+Структуру можно сравнивать, если сравнимы все её поля.
+
+  type Address struct {
+      Host string
+      Port int
+  }
+
+  first := Address{Host: "go.dev", Port: 443}
+  second := Address{Host: "go.dev", Port: 443}
+  fmt.Println(first == second) // true
+
+Сравнимую структуру можно использовать как map key:
+
+  hits := make(map[Address]int)
+  hits[first]++
+
+* Strings
+
+String является неизменяемой последовательностью байт.
+
+  text := "hello"
+  fmt.Println(len(text))        // 5 bytes
+  fmt.Println(len("Hello, 世界")) // 13 bytes, а не 9
+  fmt.Println(text[1])          // 101, byte 'e'
+
+Raw string literal сохраняет переносы и обратные слеши:
+
+  path := `C:\new\text.txt`
+  query := `line one
+  line two`
+
+Индекс строки возвращает byte, а не символ.
+
+* Byte, rune и grapheme
+
+- `byte` является alias для `uint8`
+- `rune` является alias для `int32` и хранит Unicode code point
+- Пользовательский символ, grapheme, может состоять из нескольких runes
+
+  text := "Hello, 世界"
+  fmt.Println(len(text))                   // 13 bytes
+  fmt.Println(utf8.RuneCountInString(text)) // 9 runes
+
+* Один grapheme, две runes
+
+Grapheme cluster — один воспринимаемый пользователем символ, например буква с ударением.
+
+  text := "e\u0301" // e + combining acute accent, выглядит как é
+  fmt.Println(text)                       // é
+  fmt.Println(len(text))                   // 3 bytes
+  fmt.Println(utf8.RuneCountInString(text)) // 2 runes, но 1 grapheme
+
+`"é"` (U+00E9) выглядит так же, но содержит одну rune и два bytes. Go не приводит эти записи к одному виду автоматически.
+
+Go не предоставляет встроенную итерацию по grapheme clusters.
+
+* UTF-8
+
+UTF-8 кодирует одну rune последовательностью от одного до четырёх bytes.
+
+  0xxxxxxx                              U+0000..U+007F
+  110xxxxx 10xxxxxx                     U+0080..U+07FF
+  1110xxxx 10xxxxxx 10xxxxxx            U+0800..U+FFFF
+  11110xxx 10xxxxxx 10xxxxxx 10xxxxxx   U+10000..U+10FFFF
+
+ASCII является подмножеством UTF-8.
+
+* DecodeRune и range
+
+Ручное декодирование:
+
+  for offset := 0; offset < len(text); {
+      r, size := utf8.DecodeRuneInString(text[offset:])
+      fmt.Println(offset, r, size)
+      offset += size
+  }
+
+`range` выполняет тот же проход:
+
+  for offset, r := range text {
+      fmt.Println(offset, r)
+  }
+
+`offset` измеряется в bytes.
+
+* Некорректный UTF-8
+
+При невалидном encoding декодер возвращает `utf8.RuneError`.
+
+  r, size := utf8.DecodeRuneInString("\xffA")
+  fmt.Printf("%U %d\n", r, size) // U+FFFD 1
+
+Валидный U+FFFD тоже существует. Только значение rune не доказывает ошибку.
+
+  utf8.ValidString(text)
+
+При `range` каждый невалидный byte заменяется отдельным RuneError размера 1.
+
+* Преобразование в []rune
+
+  runes := []rune("Hello, 世界")
+  text := string(runes)
+
+Преобразование декодирует строку и заменяет невалидные bytes.
+
+* Преобразование в []rune: пример
+
+.play invalidrune/main.go /func main/,/^}/
+
+  $ go run ./03-collections/invalidrune
+  input: len=3 valid=false
+  normalized: len=7 valid=true
+  "\xff\xfeA" -> "��A"
+
+Один невалидный byte может превратиться в три bytes кодировки U+FFFD. Поэтому результат бывает до трёх раз длиннее входа.
+
+* Пакеты для текста
+
+- `strings` работает со string
+- `bytes` работает с `[]byte`; `*bytes.Buffer` реализует `io.Reader` и `io.Writer`, `*bytes.Reader` — `io.Reader`
+- `unicode` классифицирует и преобразует runes
+- `unicode/utf8` кодирует и декодирует UTF-8
+- `strconv` преобразует числа и строки
+- `path` работает с путями через `/`
+- `filepath` использует правила текущей OS
+
+Выбор пакета должен соответствовать представлению данных.
+
+* string и []byte
+
+  text := "abc"
+  data := []byte(text)
+  copyText := string(data)
+
+  data[0] = 'A'
+  fmt.Println(text)     // abc
+  fmt.Println(data)     // [65 98 99]
+  fmt.Println(copyText) // abc
+
+Обычные преобразования создают независимое значение и могут выделить память.
+
+* strings.Builder
+
+.play builder/main.go /func formatInts/,/^}/
+
+  $ go run ./03-collections/builder
+  [10, 20, 30]
+
+Builder собирает string без цепочки временных конкатенаций.
+
+После первого использования `strings.Builder` нельзя копировать.
+
+* Builder и Buffer
+
+`strings.Builder` подходит, когда результатом станет string.
+
+`bytes.Buffer` хранит mutable bytes; указатель `*bytes.Buffer` реализует `io.Reader` и `io.Writer`.
+
+  var buffer bytes.Buffer
+  buffer.WriteString("hello")
+  _, _ = io.Copy(destination, &buffer)
+
+* JSON и exported fields
+
+  type Movie struct {
+      Title    string   `json:"title"`
+      Year     int      `json:"year"`
+      Color    bool     `json:"color,omitempty"`
+      Actors   []string `json:"actors"`
+      cacheKey string
+  }
+
+`encoding/json` видит только exported fields. Tag задаёт имя и дополнительные правила.
+
+Unexported `cacheKey` не попадёт в JSON.
+
+* Marshal: что попадёт в JSON?
+
+.code json/main.go /func main/,/fmt.Println/
+
+* Unmarshal: что восстановится?
+
+.code json/main.go /var decoded/,/^}/
+
+* Marshal и Unmarshal: вывод
+
+  $ go run ./03-collections/json
+  [
+    {
+      "title": "The Matrix",
+      "year": 1999,
+      "color": true,
+      "actors": [
+        "Keanu Reeves",
+        "Carrie-Anne Moss"
+      ]
+    }
+  ]
+  decoded: "The Matrix" (1999), actors=2
+
+Тип Go должен соответствовать форме JSON: array декодируется в slice, object в struct или map.
+
+* nil и empty slice в JSON
+
+  type Result struct {
+      Items []string `json:"items"`
+  }
+
+  var nilItems []string
+  emptyItems := []string{}
+
+  json.Marshal(Result{Items: nilItems})   // {"items":null}
+  json.Marshal(Result{Items: emptyItems}) // {"items":[]}
+
+Если различие важно для API, создавайте empty slice явно.
+
+* Embedding
+
+  type Point struct {
+      X int
+      Y int
+  }
+
+  type Circle struct {
+      Point
+      Radius int
+  }
+
+  circle := Circle{
+      Point:  Point{X: 10, Y: 10},
+      Radius: 5,
+  }
+  fmt.Println(circle.X)
+
+Embedding продвигает поля и методы. Это композиция, а не наследование.
+
+Методы и embedding подробно разберём в следующей лекции.
+
+* Главное
+
+- Array копируется целиком, slice копирует descriptor
+- `append` может сменить backing array, поэтому результат нужно сохранять
+- Порядок map не определён, стабильный результат требует сортировки
+- `struct{}` не хранит данные, а его адрес не подходит для identity
+- String хранит bytes, `range` декодирует runes
+- JSON работает только с exported fields
+
+* Вопросы для самопроверки
+
+1. Когда изменение одного slice видно через другой?
+2. Чем nil slice отличается от empty slice?
+3. Почему нельзя взять адрес map element?
+4. Что означает индекс из `range` по string?
+5. Почему U+FFFD не всегда означает невалидный вход?
+6. Когда выбирать Builder, а когда Buffer?
+7. Почему два указателя на разные zero-size variables могут оказаться равны?
+
+* Бонус: простой пример init
+
+.play initdemo/main.go /var squares/,$
+
+  $ go run ./03-collections/initdemo
+  [0 1 4 9]
+
+`init` заполняет таблицу квадратов до вызова `main`.
+
+Вопрос: сколько раз инициализируется пакет, если его импортируют несколько других пакетов?
+
+* Бонус: comma-ok — одно значение или два?
+
+  age := ages["bob"]
+  age, ok := ages["bob"]
+
+Это две формы операции чтения map, предусмотренные языком. `ages["bob"]` — не вызов функции.
+
+Можно ли написать такую функцию самим?
+
+  func lookup(key string) (int, bool) { return 0, false }
+
+  value, found := lookup("bob") // OK
+  onlyValue, _ := lookup("bob") // OK: второй результат игнорируем явно
+  result := lookup("bob")      // compile error: функция возвращает два значения
+
+Число результатов обычной функции фиксировано её сигнатурой.

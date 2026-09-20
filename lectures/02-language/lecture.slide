@@ -320,6 +320,7 @@ Named types помогают не смешивать значения с раз�
 
 * Константы и iota
 
+  type Weekday int
   const (
       Sunday Weekday = iota // 0
       Monday                // 1
