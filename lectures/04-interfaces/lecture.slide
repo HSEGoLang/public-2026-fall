@@ -1,0 +1,752 @@
+Методы, интерфейсы и ошибки
+Лекция 4
+
+Максим Иванов
+
+* Метод: функция с receiver
+
+.code geometry/point.go /type Point/
+.code geometry/point.go /func \(p Point\) Distance/,/^}/
+
+  p := Point{1, 2}
+  q := Point{4, 6}
+  fmt.Println(p.Distance(q)) // 5
+
+- Специальный аргумент называется *receiver*
+- Мы *не* используем `this` или `self`
+- *receiver* обычно называют по первой букве в имени типа
+
+Например: Point → p, Counter → c. Для длинного имени бывает удобно сокращение.
+
+* Указательный receiver
+
+.code geometry/point.go /func \(p \*Point\) ScaleBy/,/^}/
+
+  p := Point{1, 2}
+  p.ScaleBy(2) // (&p).ScaleBy(2)
+  fmt.Println(p) // {2 4}
+
+Автоматическое & работает для адресуемой переменной.
+
+  // Point{1, 2}.ScaleBy(2) // нельзя взять адрес таким вызовом
+
+*T нужен для изменения состояния; T получает копию значения.
+
+* Метод у nil receiver
+
+Что напечатает программа? Будет ли panic?
+
+.code nilreceiver/main.go /type IntList/,/^}/
+.code nilreceiver/main.go /func \(list/,/^}/
+.code nilreceiver/main.go /func main/,/^}/
+
+* Метод у nil receiver: разбор
+
+.code nilreceiver/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/nilreceiver
+  0
+  7
+
+Sum проверяет receiver на nil до обращения к полям.
+
+* Методы не только у struct
+
+.code geometry/point.go /type Path/,/^}/
+
+  path := Path{{1, 1}, {5, 1}, {5, 4}, {1, 1}}
+  fmt.Println(path.Distance()) // 12
+
+Named slice остаётся slice: работают len, range и индексация.
+
+* Method value и method expression
+
+Что напечатают bound(q) и distance(p, q) после изменения p?
+
+.code geometry/point.go /func \(p Point\) Distance/,/^}/
+
+.code methods/main.go /func main/,/^}/
+
+* Method value и method expression: разбор
+
+.code methods/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/methods
+  5
+  bound: 5.00
+  expression: 2.83
+
+bound сохраняет копию Point{1, 2}. distance получает текущий p = Point{2, 4}.
+
+* Method value с указательным receiver
+
+А если receiver Distance — *Point? Что изменится в выводе?
+
+.code methodpointer/main.go /func \(p \*Point\) Distance/,/^}/
+
+.code methodpointer/main.go /func main/,/^}/
+
+* Method value с указательным receiver: разбор
+
+.code methodpointer/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/methodpointer
+  5
+  bound: 2.83
+  expression: 2.83
+
+bound сохраняет указатель на p. (*Point).Distance принимает *Point явно.
+
+* Бонус: метод как аргумент
+
+Что напечатают два вызова run? Какого типа r.Launch?
+
+.code methodcallback/main.go /type Rocket/,/func run/
+.code methodcallback/main.go /func main/,/^}/
+
+* Бонус: метод как аргумент: разбор
+
+.code methodcallback/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/methodcallback
+  launch: Vostok
+  launch: Vostok
+
+- r.Launch имеет тип func(): receiver уже сохранён
+- (*Rocket).Launch имеет тип func(*Rocket): receiver нужно передать
+
+run принимает готовое действие и вызывает его. Такой аргумент называют callback.
+В этом примере r.Launch заменяет обёртку func() { r.Launch() }.
+
+* Инкапсуляция — сохранять инвариант
+
+  type Counter struct{ n int }
+  func (c *Counter) Increment() { c.n++ }
+  func (c *Counter) Reset()     { c.n = 0 }
+  func (c Counter) N() int      { return c.n }
+
+- Видимость private/exported действует на package
+- Методы выражают операции: Increment, Reset, а не обязательные Get/Set
+- Для простого Point открытые X и Y могут быть достаточным API
+
+Сеттеры/геттеры для простых типов не приветствуются.
+
+* Embedding: встроенный Point
+
+Почему требуется q.Point? Можно ли написать p.Distance(q)?
+
+  type ColoredPoint struct {
+      Point
+      Color string
+  }
+  p := ColoredPoint{Point: Point{1, 1}, Color: "red"}
+  q := ColoredPoint{Point: Point{5, 4}, Color: "blue"}
+  fmt.Println(p.Distance(q.Point))
+  p.ScaleBy(2)
+
+* Embedding != Inheritance
+
+  type ColoredPoint struct {
+      Point
+      Color string
+  }
+  p := ColoredPoint{Point: Point{1, 1}, Color: "red"}
+  q := ColoredPoint{Point: Point{5, 4}, Color: "blue"}
+
+  // p.Distance(q) // ошибка: ColoredPoint нельзя передать вместо Point
+  fmt.Println(p.Distance(q.Point)) // 5
+  p.ScaleBy(2) // p.Point.ScaleBy(2)
+
+Embedding продвигает методы, но не делает ColoredPoint подтипом Point.
+p.Distance(q.Point) — короткая запись p.Point.Distance(q.Point).
+
+* Embedding: конфликты
+
+Скомпилируется ли s.Log("hi")? Что напечатают явные вызовы?
+
+.code embeddingconflict/main.go /LOGGERS OMIT/,/END LOGGERS OMIT/
+.code embeddingconflict/main.go /func main/,/^}/
+
+* Embedding: конфликты: разбор
+
+.code embeddingconflict/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/embeddingconflict
+  A: hi
+  B: hi
+
+У двух вложенных типов есть Log на одинаковой глубине.
+s.Log неоднозначен; выбираем s.LoggerA.Log или s.LoggerB.Log.
+
+* Embedding: выбор метода
+
+Что напечатают t.Show() и t.Base.Show()?
+
+.code embeddingouter/main.go /TYPES OMIT/,/END TYPES OMIT/
+.code embeddingouter/main.go /func main/,/^}/
+
+* Embedding: выбор метода: разбор
+
+.code embeddingouter/main.go /TYPES OMIT/,/END TYPES OMIT/
+.code embeddingouter/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/embeddingouter
+  outer
+  base
+
+Метод внешнего типа перекрывает продвинутый метод Base.
+
+* Embedding: ближайший метод
+
+Можно ли вызвать x.L3.Show()? Что напечатает программа?
+
+.code embeddingchoice/main.go /TYPES OMIT/,/END TYPES OMIT/
+.code embeddingchoice/main.go /func main/,/^}/
+
+* Embedding: ближайший метод: разбор
+
+.code embeddingchoice/main.go /var x/,/x.L3.Show/
+
+  $ go run ./04-interfaces/embeddingchoice
+  L2
+  L2
+  L3
+  L3
+
+x.L3 — короткая запись x.L2.L3: продвигаются и поля, и методы.
+x.Show() выбирает ближайший метод; x.L3.Show() явно выбирает L3.
+
+* Хотим печатать приветствие
+
+  func Greet(name string) {
+      fmt.Println("Hello, " + name + "!")
+  }
+
+Пока приветствие всегда попадает в консоль — stdout.
+
+Теперь хотим тот же текст:
+
+- в файл с отчётом;
+- в список строк, чтобы проверить результат в тесте;
+- в другое место, которое появится позже.
+
+Приветствие должно остаться одним. Меняется только способ вывода.
+
+* Интерфейс описывает нужное действие
+
+.code writer/main.go /type Printer/,/^}/
+
+Интерфейс — тип, который задаёт набор необходимых методов.
+Здесь нужен один метод Print: принять строку и вернуть ошибку, если печать не удалась.
+
+.code writer/main.go /func Greet\(/,/^}/
+
+Greet знает, *что* надо сделать. Значение out определяет, *как* это сделать.
+
+* Печать в консоль и в файл
+
+.code writer/main.go /type Console/,/^}/
+.code writer/main.go /type FilePrinter/,/^}/
+
+fmt.Println пишет в stdout; fmt.Fprintln пишет в переданный открытый файл.
+В FilePrinter передаём уже открытый *os.File. К открытию и Close вернёмся ниже.
+
+* Печать без экрана и файла
+
+.code writer/main.go /type Notebook/,/^}/
+
+Notebook сохраняет каждую строку в знакомый slice.
+*Notebook нужен потому, что Print меняет Lines.
+
+Так в тесте можно проверить текст, не открывая файл и не перехватывая stdout.
+
+* Что значит «удовлетворяет интерфейсу»
+
+Тип удовлетворяет интерфейсу, если у него есть все требуемые методы
+с совпадающими именами и сигнатурами.
+
+  type Printer interface { Print(string) error }
+
+  var out Printer
+  out = Console{}     // Print(string) error есть
+  out = &Notebook{}   // Print(string) error есть
+  // out = 42         // у int нет Print(string) error
+
+Это проверяет компилятор. Объявлять implements не нужно.
+Совпавшая сигнатура ещё не гарантирует правильное поведение метода.
+
+* Одна функция — разные назначения
+
+Что появится в консоли? Что сохранится в notebook.Lines?
+
+.code writer/main.go /func main/,/^}/
+
+* Одна функция — разные назначения: разбор
+
+.code writer/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/writer
+  Hello, Ada!
+  [Hello, Ada!]
+
+Greet не меняется. Каждый получатель выполняет свой Print.
+
+* Стандартный контракт: io.Writer
+
+  type Writer interface {
+      Write(p []byte) (n int, err error)
+  }
+
+Writer принимает порцию данных: n — сколько записано, err — что пошло не так.
+Форматирование текста уже умеет fmt.Fprintf.
+
+.code writer/main.go /func GreetWriter/,/^}/
+
+И os.Stdout, и открытый *os.File удовлетворяют io.Writer.
+В GreetWriter можно передать любой из них.
+
+* Reader читает, Closer закрывает
+
+  type Reader interface {
+      Read(p []byte) (n int, err error)
+  }
+  type Closer interface {
+      Close() error
+  }
+  type ReadCloser interface {
+      Reader
+      Closer
+  }
+
+Reader умеет читать данные. Closer умеет освобождать ресурс.
+ReadCloser требует оба метода: Read и Close.
+
+Функция принимает только нужный ей контракт: чтобы читать, достаточно Reader.
+
+* Stringer: управление представлением
+
+fmt.Stringer задаёт способ представить значение строкой.
+Что напечатают %v, %s и %#v?
+
+  type Stringer interface { String() string }
+  type User struct { ID int; Name string }
+
+.code stringer/main.go /func \(u User\)/,/^}/
+.code stringer/main.go /func main/,/^}/
+
+* Stringer: управление представлением: разбор
+
+  type Stringer interface { String() string }
+  type User struct { ID int; Name string }
+
+.code stringer/main.go /func \(u User\)/,/^}/
+.code stringer/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/stringer
+  User(42:"Ada")
+  User(42:"Ada")
+  main.User{ID:42, Name:"Ada"}
+
+%#v использует GoStringer, если он есть; обычный String здесь не вызывается.
+
+* Method set: вызов и присваивание
+
+Какие строки компилируются? Рассматривайте каждую отдельно.
+
+  type IntSet struct{}
+  func (*IntSet) String() string { return "{}" }
+
+  var set IntSet
+  fmt.Println(set.String())
+  var _ fmt.Stringer = &set
+  var _ fmt.Stringer = set
+
+* Method set: разбор
+
+  type IntSet struct{}
+  func (*IntSet) String() string { return "{}" }
+
+  var set IntSet
+  fmt.Println(set.String()) // OK: (&set).String()
+  var _ fmt.Stringer = &set // OK
+  var _ fmt.Stringer = set // ошибка
+
+- Method set T: методы с receiver T
+- Method set *T: методы с receiver T и *T
+- Присваивание интерфейсу не добавляет &
+
+* Embedding: значение или указатель
+
+Какие строки компилируются? Рассматривайте каждую отдельно.
+
+.code embedding/main.go /type Counter/,/type Incrementer/
+
+  var value ByValue
+  value.Inc()
+  var _ Incrementer = value
+  var _ Incrementer = &value
+  var _ Incrementer = ByPointer{}
+
+* Embedding: значение или указатель: разбор
+
+.code embedding/main.go /type Counter/,/type Incrementer/
+
+  var value ByValue
+  value.Inc() // OK: адресуемая переменная
+  var _ Incrementer = value // ошибка: у ByValue нет Inc
+  var _ Incrementer = &value // OK: Inc есть у *ByValue
+  var _ Incrementer = ByPointer{} // OK: Inc есть у ByPointer
+
+Встроенный *Counter может быть nil: перед вызовом Inc его нужно создать.
+
+* Встроенный интерфейс: обёртка
+
+.code wrapper/main.go /type PrefixPrinter/,/^}/
+.code wrapper/main.go /func \(p PrefixPrinter\)/,/^}/
+.code wrapper/main.go /out :=/,/err :=/
+
+  $ go run ./04-interfaces/wrapper
+  [course] Hello, Ada!
+
+Поле Printer хранит Console{}. out.Print вызывает метод PrefixPrinter.
+Он добавляет префикс, затем p.Printer.Print вызывает Console.Print.
+
+* Interface value и any
+
+  var out Printer           // (nil, nil)
+  out = Console{}           // (Console, значение Console)
+  out = &Notebook{}         // (*Notebook, указатель)
+  out = nil                 // снова (nil, nil)
+
+Модель interface value: динамический тип + значение этого типа.
+Статический тип переменной out по-прежнему Printer.
+
+  type any = interface{}
+  var value any = 42
+  value = "Go"
+  value = []int{1, 2}
+
+any не требует методов: хранить можно любое значение, а вызывать Print нельзя.
+
+* Ловушка: nil внутри интерфейса
+
+Notebook.Print — тот же метод, который добавляет строку в Lines.
+Что напечатает код? А если раскомментировать Print?
+
+.code nilinterface/main.go /func main/,/^}/
+
+* Ловушка: nil внутри интерфейса: разбор
+
+.code nilinterface/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/nilinterface
+  true false
+  *main.Notebook
+  true
+
+out содержит (*Notebook, nil). Notebook.Print обращается к полю и вызовет panic.
+Для отсутствующего Printer возвращайте nil напрямую.
+
+* Type assertion: проверка динамического типа
+
+Чему равны три ok? Что произойдёт без comma-ok в последней строке?
+
+  var value any = &Notebook{}
+  notebook, okNotebook := value.(*Notebook)
+  console, okConsole := value.(Console)
+  printer, okPrinter := value.(Printer)
+  // _ = value.(Console)
+
+* Type assertion: проверка динамического типа: разбор
+
+  var value any = &Notebook{}
+  notebook, okNotebook := value.(*Notebook) // true
+  console, okConsole := value.(Console) // false, Console{}
+  printer, okPrinter := value.(Printer) // true
+  // _ = value.(Console) // panic
+
+Для конкретного типа нужно точное совпадение; для интерфейса — нужные методы.
+
+  var rc io.ReadCloser
+  var r io.Reader = rc // обычное присваивание, даже при rc == nil
+
+* Бонус: присваивание и assertion при nil
+
+Что напечатает программа? Что будет, если раскомментировать последнюю строку?
+
+.code assertionnil/main.go /func main/,/^}/
+
+* Бонус: присваивание и assertion: разбор
+
+.code assertionnil/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/assertionnil
+  assignment: true
+  assertion: true false
+
+Присваивание допустимо по типам: у ReadCloser есть все методы Reader.
+Assertion проверяет динамический тип. У nil-интерфейса его нет: ok == false.
+Без comma-ok эта проверка вызовет panic.
+
+* Type switch вместо цепочки assertions
+
+Что напечатает программа?
+
+.code typeinspect/main.go /func describe/,/^}/
+.code typeinspect/main.go /func main/,/^}/
+
+* Type switch вместо цепочки assertions: разбор
+
+.code typeinspect/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/typeinspect
+  nothing
+  text: Go
+  number: 7
+  other: bool
+
+В case string переменная v имеет тип string; в case int, uint — any.
+
+* Сравнение интерфейсов
+
+Что выведут три сравнения? Что произойдёт в закомментированной строке?
+
+  var a any = 7
+  var b any = 7
+  fmt.Println(a == b)
+  b = int64(7)
+  fmt.Println(a == b)
+
+  var x any = []int{1}
+  fmt.Println(x == nil)
+  // fmt.Println(x == x)
+
+* Сравнение интерфейсов: разбор
+
+  var a any = 7
+  var b any = 7
+  fmt.Println(a == b) // true
+  b = int64(7)
+  fmt.Println(a == b) // false
+
+  var x any = []int{1}
+  fmt.Println(x == nil) // false
+  // fmt.Println(x == x) // panic: slice не comparable
+
+Для равенства нужны одинаковые динамические типы и равные значения.
+
+* defer: кто открыл, тот закрывает
+
+  src, err := os.Open(srcName)
+  if err != nil {
+      return err
+  }
+  defer src.Close()
+
+  dst, err := os.Create(dstName)
+  if err != nil {
+      return err // src всё равно закроется
+  }
+
+defer ставят после успешного получения ресурса.
+io.Reader/io.Writer сами по себе не означают владение и Close.
+
+* defer: что и когда сохранится?
+
+Что напечатает вызов order()? В каком порядке?
+
+.code deferrules/main.go /func order/,/^}/
+
+* defer: аргументы и порядок вызовов
+
+.code deferrules/main.go /func order/,/^}/
+
+  $ go run ./04-interfaces/deferrules
+  closure: 2
+  argument: 1
+
+Аргумент fmt.Println вычисляется при defer; замыкание читает x при выходе.
+Отложенные вызовы идут в обратном порядке при выходе из функции.
+
+* defer и именованный результат
+
+Что напечатает программа?
+
+.code deferresult/main.go /func result/,/^}/
+.code deferresult/main.go /func main/,/^}/
+
+* defer и именованный результат: разбор
+
+.code deferresult/main.go /func result/,/^}/
+.code deferresult/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/deferresult
+  2
+
+return 1 сначала присваивает n = 1; затем defer увеличивает n.
+
+  defer func() {
+      if closeErr := dst.Close(); err == nil {
+          err = closeErr
+      }
+  }()
+
+Именованный err позволяет вернуть ошибку Close после успешной записи.
+
+* defer в цикле: что будет?
+
+В names — много файлов. process использует файл, но сам его не закрывает.
+Когда выполнятся Close? Что может пойти не так?
+
+.code deferloop/main.go /func processAll\(/,/^}/
+
+* defer в цикле: файлы накапливаются
+
+.code deferloop/main.go /func processAll\(/,/^}/
+
+defer ждёт выхода из processAll, а не конца итерации.
+При большом списке os.Open может вернуть «too many open files».
+После выхода из функции отложенные Close всё-таки выполнятся.
+
+* defer в цикле: закрываем на каждой итерации
+
+  for _, name := range names {
+      if err := processOne(name); err != nil {
+          return err
+      }
+  }
+
+.code deferloop/main.go /func processOne/,/^}/
+
+Каждый вызов processOne завершается вместе со своим Close.
+Перед следующим открытием предыдущий файл уже закрыт.
+
+* panic и recover: граница аварии
+
+Что напечатает программа? Дойдёт ли main до своей печати?
+
+.code recovery/main.go /func boundary/,/^}/
+.code recovery/main.go /func main/,/^}/
+
+* panic и recover: граница аварии: разбор
+
+.code recovery/main.go /func boundary/,/^}/
+.code recovery/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/recovery
+  cleanup
+  recovered: broken invariant
+  caller continues
+
+recover вызывают прямо внутри deferred-функции в той же goroutine.
+
+* Бонус: panic в цепочке вызовов
+
+В каком порядке появятся строки? Дойдём ли до двух строк с after?
+
+.code panicstack/main.go /CHAIN OMIT/,/END CHAIN OMIT/
+
+* Бонус: panic в цепочке: разбор
+
+.code panicstack/main.go /func outer/,/^}/
+.code panicstack/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/panicstack
+  inner: cleanup
+  outer: cleanup
+  main: recover: boom
+
+Сначала выполняется defer в inner, затем в outer, затем в main.
+Обе строки с after пропущены: recover завершает main, а не продолжает outer.
+
+* Бонус: превращаем panic в error
+
+Что получит вызывающий код? Появится ли caller continues?
+
+.code panicerror/main.go /func execute/,/^}/
+.code panicerror/main.go /func main/,/^}/
+
+* Бонус: panic становится error: разбор
+
+.code panicerror/main.go /func execute/,/^}/
+
+  $ go run ./04-interfaces/panicerror
+  action failed: printer broken
+  caller continues
+
+defer записывает ошибку в именованный результат err.
+После recover execute возвращает этот err; до return nil выполнение не доходит.
+
+Такую границу выбирают явно. Ожидаемые ошибки обычно возвращают через return err.
+
+* Бонус: новый panic после recover
+
+Что увидят два recover? Появится ли after inner?
+
+.code repanic/main.go /PANICS OMIT/,/END PANICS OMIT/
+
+* Бонус: новый panic: разбор
+
+.code repanic/main.go /func inner/,/^}/
+
+  $ go run ./04-interfaces/repanic
+  inner: first
+  outer: second
+
+Внутренний recover перехватил first. Затем начался новый panic со значением second.
+Его перехватил defer в main. Строка after inner не выполнилась.
+
+Чтобы передать исходную панику дальше, сохраняют value := recover() и вызывают panic(value).
+
+* Главное и самопроверка
+
+1. Почему Console и *Notebook можно передать в одну Greet?
+2. Чем отличаются x.Show() и x.L3.Show()?
+3. Почему value.Inc() работает, а var i Incrementer = value — нет?
+4. Может ли nil pointer лежать в ненулевом интерфейсе?
+5. Когда сработает defer, записанный внутри цикла?
+
+* Бонус: ошибки — короткая справка
+
+  type error interface { Error() string }
+
+nil означает успех; ненулевой error описывает проблему.
+
+  if err != nil {
+      return fmt.Errorf("print: %w", err)
+  }
+
+- %w добавляет контекст и сохраняет исходную ошибку
+- errors.Is(err, target) проверяет нужную причину через обёртки
+- errors.As(err, &detail) достаёт ошибку нужного типа через обёртки
+
+Не сравнивайте ошибки по тексту.
+
+* Бонус: поведение ошибки через интерфейс
+
+Разные ошибки могут сообщать, временная ли проблема.
+Для этого опишем свой интерфейс Temporary.
+
+.code temporary/main.go /type Temporary/,/func \(e \*BusyError\) IsTemporary/
+
+*BusyError удовлетворяет и error, и Temporary.
+Получателю достаточно нужного поведения — знать каждый конкретный тип не требуется.
+
+* Бонус: ищем интерфейс через errors.As
+
+Что напечатает программа? Найдут ли обе проверки Temporary?
+
+.code temporary/main.go /func main/,/^}/
+
+* Бонус: errors.As и интерфейс: разбор
+
+.code temporary/main.go /func main/,/^}/
+
+  $ go run ./04-interfaces/temporary
+  assertion: false
+  errors.As: true
+  temporary: true
+
+Assertion проверяет саму обёртку: у неё нет IsTemporary.
+errors.As проходит внутрь и сохраняет *BusyError в temporary.
+Передаём &temporary, чтобы As записал найденное значение.
