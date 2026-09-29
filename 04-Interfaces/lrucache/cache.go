@@ -1,0 +1,11 @@
+//go:build !change
+
+package lrucache
+
+// Cache stores at most capacity entries. It is not safe for concurrent use.
+type Cache interface {
+	Get(key int) (int, bool)
+	Set(key, value int)
+	Range(f func(key, value int) bool)
+	Clear()
+}
