@@ -21,7 +21,9 @@ func TestNewWriterDoesNotUseStreams(t *testing.T) {
 func TestWriterUsesShortPRNGReadsAcrossCalls(t *testing.T) {
 	data := []byte{65, 66, 67, 68, 69}
 	key := []byte{42, 1, 7, 2, 3}
+
 	var output bytes.Buffer
+
 	writer := NewWriter(&output, iotest.OneByteReader(bytes.NewReader(key)))
 
 	n, err := writer.Write(data[:2])
