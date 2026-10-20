@@ -1,0 +1,781 @@
+Тестирование
+Лекция 6
+
+Максим Иванов
+
+* Зачем тестировать небольшую библиотеку
+
+Библиотека для словесных игр проверяет палиндромы.
+
+Контракт: учитывать буквы Unicode, игнорировать регистр и остальные символы.
+Пустая строка считается палиндромом.
+
+- `kayak` → true
+- `été` → true
+- «A man, a plan, a canal: Panama» → true
+- `palindrome` → false
+
+После изменения программы те же тесты помогают обнаружить регрессию.
+
+* Первая реализация
+
+.code word1/word.go /func IsPalindrome/,/^}/
+
+Индекс строки обращается к байту. range по строке даёт позиции начала рун.
+Достаточно ли этой реализации для нашего контракта?
+
+* Как Go запускает тесты
+
+- Файлы `*_test.go` не входят в обычную сборку программы.
+- «go test» собирает пакет вместе с тестами и запускает тестовый main.
+- Тестовая функция: «func TestName(t *testing.T)».
+
+`testing` — стандартный пакет; `*testing.T` хранит результат текущего теста.
+После `Test` не должна идти строчная буква: `TestingDB` не подходит.
+
+Все команды этой лекции запускаем из каталога lectures.
+
+* Выбрать тест командой
+
+  $ go test ./06-testing/word1 -v -run '^TestPalindrome$'
+  === RUN   TestPalindrome
+  --- PASS: TestPalindrome
+
+- `./06-testing/word1` — пакет, который проверяем.
+- `-v` — подробный вывод: имена тестов, результат и сообщения `t.Log`.
+- `-run` — фильтр имён тестов; его значение — регулярное выражение.
+- `^` означает начало имени, `$` — конец: выбираем ровно `TestPalindrome`.
+
+Благодаря одинарным кавычкам оболочка передаёт фильтр go test одним аргументом.
+Без -run запускаются все обычные тесты выбранного пакета.
+
+* Два первых теста
+
+.code word1/word_test.go /func TestPalindrome/,/^}/
+.code word1/word_test.go /func TestNonPalindrome/,/^}/
+
+  $ go test ./06-testing/word1 -run '^Test(Palindrome|NonPalindrome)$'
+  ok .../06-testing/word1
+
+`(Palindrome|NonPalindrome)` выбирает один из двух вариантов имени.
+Успех подтверждает эти два случая. Весь контракт ещё не проверен.
+
+* Проверяем границы контракта: вопрос
+
+.code word1/word_test.go /func TestFrenchPalindrome/,/OMIT/
+
+Какие из двух тестов пройдут? Почему?
+
+* Проверяем границы контракта: разбор
+
+  $ go test ./06-testing/word1 -v -run 'French|Canal'
+  --- FAIL: TestFrenchPalindrome
+      IsPalindrome("été") = false
+  --- FAIL: TestCanalPalindrome
+      IsPalindrome("A man, a plan, a canal: Panama") = false
+
+Фильтр `French|Canal` ищет любое из этих слов внутри имени теста.
+Это намеренно красные тесты первой реализации.
+
+Нужны буквы, а не байты; регистр, пробелы и пунктуация входят в контракт.
+
+* Исправляем модель данных
+
+`unicode.IsLetter` выбирает буквы; `unicode.ToLower` приводит их к нижнему регистру.
+
+.code word2/word.go /func IsPalindrome/,/^}/
+
+Сравниваем полученные руны, а не байты исходной строки.
+
+* Таблица случаев
+
+.code word2/word_test.go /tests :=/,/^\s*}$/
+
+Каждая строка — вход и ожидаемый результат.
+Проверяем пустой вход, один символ, разные длины, Unicode и знаки.
+
+* Именованные подтесты
+
+«t.Run(name, fn)» запускает подтест с отдельным `*testing.T`.
+
+.code word2/word_test.go /for _, test := range tests/,/^}/
+
+Имя случая добавляется к имени родительского теста:
+`TestIsPalindrome/unicode`.
+
+* Выбрать один подтест
+
+  $ go test ./06-testing/word2 -v \
+      -run '^TestIsPalindrome/unicode$'
+  === RUN   TestIsPalindrome/unicode
+  --- PASS: TestIsPalindrome/unicode
+
+`-run` разделяет выражение по `/`:
+
+- `^TestIsPalindrome` — имя родителя начинается с TestIsPalindrome.
+- `unicode$` — имя подтеста заканчивается на unicode.
+
+Для нашей таблицы этого достаточно.
+Строгое совпадение обеих частей: `^TestIsPalindrome$/^unicode$`.
+
+Родитель выполняется, чтобы найти подтест. Другие случаи таблицы пропускаются.
+`\` в команде означает продолжение shell-команды на следующей строке.
+
+* Свой пакет или внешний тест
+
+  package word       // тест видит непубличные имена word
+  package word_test  // тест импортирует word и видит публичный API
+
+Это альтернативные объявления пакета в разных тестовых файлах.
+
+- Тест внутри пакета удобен для небольшого внутреннего механизма.
+- Внешний тест использует библиотеку так же, как другой пакет программы.
+- Внешний тест не может обратиться к имени с маленькой буквы.
+
+* Бонус: доступ к внутренней функции из внешнего теста
+
+Наш пакет greeting очищает имя перед приветствием.
+Внешний «package greeting_test» не видит `normalizeName`.
+
+.code externaltest/greeting.go /func normalizeName/,/^}/
+
+Добавим в тот же пакет файл `export_test.go`:
+
+.code externaltest/export_test.go
+
+`NormalizeName` — публичная переменная-функция, указывающая на `normalizeName`.
+
+* Бонус: имя существует только при go test
+
+Внешний тест импортирует пакет greeting:
+
+  import greeting "hse-go/lectures/06-testing/externaltest"
+
+.code externaltest/greeting_test.go /func TestNormalizeName/,/^}/
+
+  $ go test ./06-testing/externaltest -run '^TestNormalizeName$'
+  ok .../06-testing/externaltest
+
+При «go test» файл `export_test.go` добавляет `greeting.NormalizeName`.
+Обычная программа собирается без этого файла:
+
+  greeting.NormalizeName("  Alice  ")
+  // Ошибка компиляции: undefined: greeting.NormalizeName
+
+Публичный `greeting.Hello` доступен и обычной программе, и тестам.
+
+* Ошибка должна объяснять, что произошло
+
+  if got, want := len(strings.Split("a:b:c", ":")), 3; got != want {
+      t.Errorf("Split(%q, %q): got %d words, want %d",
+          "a:b:c", ":", got, want)
+  }
+
+Сообщение содержит операцию, вход, actual и expected.
+Паника «3 != 4» не объясняет ни входа, ни ожидания.
+
+Ожидаемое значение берём из контракта, а не из проверяемого алгоритма.
+
+* Сообщить ошибку или остановить тест
+
+- `t.Error` / `t.Errorf` записывают ошибку и продолжают тест.
+- `t.Fatal` / `t.Fatalf` записывают ошибку и вызывают `t.FailNow`.
+- `t.FailNow` прекращает выполнение текущей тестовой функции; defer выполняются.
+
+Например, load возвращает результат и ошибку:
+
+  result, err := load()
+  if err != nil {
+      t.Fatalf("load: %v", err)
+  }
+  // Здесь result уже можно проверять.
+
+Независимые проверки продолжаем. Без нужного результата останавливаемся.
+
+* Бонус: пропуск недоступного окружения
+
+`t.Skip` прекращает текущий тест с результатом SKIP, а не PASS.
+
+  func TestDB(t *testing.T) {
+      if os.Getenv("DB") == "off" {
+          t.Skip("DB=off: dependency disabled")
+      }
+      // Здесь выполнялись бы проверки базы данных.
+  }
+
+Пропускаем явно отключённую зависимость.
+Ошибка обычной проверки должна дать FAIL, а не SKIP.
+
+* Библиотека проверок testify
+
+`assert` и `require` — пакеты внешней библиотеки `github.com/stretchr/testify`.
+Они записывают обычные тестовые проверки короче.
+
+.code testify/example_test.go /func Sum/,/^}/
+
+- «assert.Equal(t, expected, actual)» возвращает bool; при неудаче пишет ошибку.
+- «require.Equal(t, expected, actual)» при неудаче пишет ошибку и вызывает FailNow.
+- При успешном Require тест продолжает выполняться.
+- Require-функции не возвращают значение.
+
+* Успешный Require продолжает тест
+
+.code testify/example_test.go /func TestSumWithRequire/,/^}/
+
+  $ go test ./06-testing/testify -v -run '^TestSumWithRequire$'
+  после успешной проверки
+
+Sum(1, 2) равен 3 — тест выполняет следующую строку.
+Если ожидать 4, проверка даст FAIL и t.Log не выполнится.
+
+* Require и отдельная горутина
+
+Тестовая горутина — та, в которой testing выполняет `TestSumFromWorker`.
+Горутина, запущенная через `go`, — отдельный работник.
+
+.code testify/example_test.go /func TestSumFromWorker/,/^}/
+
+Работник вычисляет и передаёт результат. Require вызывается в теле теста.
+Require / Fatal / FailNow разрешены только в горутине самого теста.
+FailNow в работнике завершил бы работника, а не продолжение родительского теста.
+
+* Бонус: сообщение assert.Equalf
+
+.code testify/example_test.go /func Sum/,/^}/
+.code testify/example_test.go /func TestSum0/,/^}/
+
+  $ go test ./06-testing/testify -v -run '^TestSum0$'
+  Error:      Not equal:
+              expected: 4
+              actual  : 3
+  Messages:   Sum(1, 2)
+
+«"Sum(%d, %d)", 1, 2» добавляет пояснение «Sum(1, 2)» в строку Messages.
+Суффикс f означает форматирование сообщения, как в fmt.Printf.
+Ожидание 4 намеренно неверно: настоящая сумма равна 3.
+
+* Helper: где произошла ошибка?
+
+  func assertGood(t *testing.T, i int) {
+      if i != 0 {
+          t.Errorf("got %d, want 0", i)
+      }
+  }
+
+  func TestA(t *testing.T) {
+      assertGood(t, 0)
+      assertGood(t, 1)
+  }
+
+На какую строку укажет сообщение: вызов helper или t.Errorf внутри него?
+
+* Helper: разбор
+
+`t.Helper()` помечает вызывающую функцию как вспомогательную.
+
+  func assertGood(t *testing.T, i int) {
+      t.Helper()
+      if i != 0 {
+          t.Errorf("got %d, want 0", i)
+      }
+  }
+
+Теперь место ошибки — строка «assertGood(t, 1)» в TestA.
+Проверка и её результат не изменились: изменилось место диагностики.
+Каждая вспомогательная обёртка тоже должна вызвать Helper.
+
+* Бонус: вывод через io.Writer
+
+`out` — место назначения вывода. В обычной программе это терминал:
+
+.code echo/echo.go /var out/,/var out/
+.code echo/echo.go /func echo/,/^}/
+
+  $ go run ./06-testing/echo Go tests
+  Go tests
+
+`echo` использует Writer, а не конкретно os.Stdout.
+В тесте можно подставить bytes.Buffer: его String вернёт записанный текст.
+
+* Бонус: подменяем out в тесте
+
+.code echo/echo_test.go /func TestEchoBuffer/,/^}/
+
+* Бонус: результат и восстановление подмены
+
+«out = &buf» направляет запись echo в память.
+`buf.String()` возвращает записанный текст:
+
+  "Go tests\n"
+
+`t.Cleanup` восстанавливает прежний out, в том числе после Fatal.
+
+  $ go test ./06-testing/echo -run '^TestEchoBuffer$'
+  ok .../06-testing/echo
+
+Глобальную переменную делят все тесты.
+Такую подмену нельзя использовать в параллельных тестах.
+
+* Тестируем отправку через интерфейс
+
+Welcome должен отправить пользователю приветствие.
+В тесте хотим проверить аргументы, не отправляя настоящее сообщение.
+
+.code gomock/example.go /type Notifier/,/^}/
+.code gomock/example.go /func Welcome/,/^}/
+
+В программе передадим настоящий Notifier, а в тесте — объект с тем же Send.
+Так функция Welcome не зависит от способа отправки.
+
+* Генерируем mock из интерфейса
+
+Mock записывает вызовы и проверяет ожидания теста.
+`gomock` — внешняя библиотека, `mockgen` — её генератор.
+
+В example.go записываем полную однострочную директиву:
+
+.html gomock/wrap-code.html
+.code gomock/example.go /go:generate/,/go:generate/
+
+Она выполняется из каталога example.go.
+Из каталога lectures запускаем:
+
+  $ go generate ./06-testing/gomock
+
+- `-source=example.go` — где объявлен интерфейс.
+- `-destination=mock.go` — куда записать сгенерированный код.
+- `-package=example` — имя пакета этого файла.
+
+go generate выполняет директиву. Обычный go test не запускает генерацию.
+
+* Что сгенерировал mockgen
+
+Контроллер gomock хранит ожидаемые вызовы и их результаты.
+Сгенерированный `MockNotifier` передаёт ему каждый вызов Send:
+
+.code gomock/mock.go /type MockNotifier struct/,/^}/
+.code gomock/mock.go /func \(m \*MockNotifier\) Send/,/^}/
+
+Метод имеет ту же сигнатуру, что Notifier.Send.
+Писать этот код руками не нужно; в тесте настроим поведение через EXPECT.
+
+* Ожидаемый вызов и тест
+
+`NewController(t)` связывает ожидания с тестом и проверяет их при Cleanup.
+`NewMockNotifier(ctrl)` создаёт сгенерированный объект.
+
+.code gomock/example_test.go /func TestWelcome\(/,/^}/
+
+`EXPECT().Send(...)` задаёт ожидаемый вызов; `Return(nil)` — его результат.
+Эта строка настраивает mock. Welcome ниже должен вызвать Send ровно один раз.
+
+* Mock: проверяем взаимодействие
+
+  $ go test ./06-testing/gomock -run '^TestWelcome$'
+  ok .../06-testing/gomock
+
+Тест проверяет не только ошибку, возвращённую Welcome, но и отправку:
+
+- Send получил именно `"alice"` и «"Welcome to Go!"».
+- Send вызван ровно один раз.
+
+Если Welcome передаст другого пользователя, вызов не совпадёт с ожиданием — FAIL.
+Если Welcome вернёт nil без отправки, при Cleanup останется невыполненное ожидание — FAIL.
+
+* Покрытие: какой код исполнился
+
+Покрытие показывает долю исполненных операторов, а не долю доказанной корректности.
+
+.code size/size.go /func Size/,/^}/
+
+* Покрытие: два случая
+
+.code size/size_test.go /tests :=/,/^\s*}$/
+
+  $ go test ./06-testing/size -cover
+  coverage: 42.9% of statements
+
+`-cover` включает измерение доли исполненных операторов.
+Ветки zero, big, huge и enormous пока не проверены.
+Даже 100% покрытия не проверяет правильность ожидаемых значений.
+
+* Покрытие: где остались пробелы
+
+  $ go test ./06-testing/size -coverprofile=/tmp/size.cover
+  $ go tool cover -html=/tmp/size.cover
+
+`-coverprofile` сохраняет данные; `-html` открывает их как отчёт по исходникам.
+
+.image size/coverage.png 340 _
+
+Цвет помогает найти код, который тесты ещё не исполнили.
+
+* Измеряем производительность
+
+Benchmark измеряет стоимость операции. Корректность сначала проверяем тестами.
+Функция «BenchmarkName(b *testing.B)» находится в `*_test.go`.
+
+.code word2/word_test.go /func BenchmarkIsPalindrome/,/^}/
+
+`b.Loop()` повторяет вызов, пока testing собирает измерение.
+Go сам подбирает число итераций. Время делится на число операций.
+Эта форма цикла также защищает вызов от удаления компилятором.
+
+* Benchmark: команда и результат
+
+  $ go test ./06-testing/word2 -run='^$' \
+      -bench=IsPalindrome -benchmem -benchtime=100ms
+  BenchmarkIsPalindrome-12  1057824  101.9 ns/op  192 B/op  2 allocs/op
+
+- `-run='^$'` не выбирает обычных тестов: их имена не пусты.
+- `-bench=IsPalindrome` выбирает benchmarks по регулярному выражению.
+- `-benchmem` добавляет измерение выделений памяти.
+- `-benchtime=100ms` задаёт целевую длительность одного измерения.
+
+`1057824` — число итераций; «101.9 ns/op» — наносекунды на операцию.
+«192 B/op» — выделенные байты на операцию; «2 allocs/op» — выделения на операцию.
+`-12` — GOMAXPROCS этого запуска, не количество итераций.
+
+* Подбенчмарки: один алгоритм, два размера
+
+Измерим перевод строки в верхний регистр на 10 и 100 символах.
+
+.code benchcases/bench_test.go /func BenchmarkSizes/,/^}/
+
+«b.Run(name, fn)» даёт каждому размеру собственный benchmark.
+`b.ReportAllocs()` включает колонки памяти для этого измерения.
+Подготовка input до b.Loop не входит во время операции.
+
+* Подбенчмарки: читаем два результата
+
+  $ go test ./06-testing/benchcases -run='^$' \
+      -bench=Sizes -benchtime=100ms
+  BenchmarkSizes/10-12   3343737  33.35 ns/op   16 B/op  1 allocs/op
+  BenchmarkSizes/100-12   528526  231.7 ns/op  112 B/op  1 allocs/op
+
+`/10` и `/100` — имена, переданные в b.Run.
+Колонки памяти есть благодаря ReportAllocs: -benchmem здесь не указан.
+
+Один размер выбирается так же, как подтест:
+
+  $ go test ./06-testing/benchcases -run='^$' -bench='Sizes/^100$'
+
+Длинный вход в этом запуске требует больше времени и памяти.
+
+* Бонус: две реализации одной операции
+
+Обе функции повторяют строку n раз:
+
+.code benchcases/repeat_test.go /func repeatConcat/,/^}/
+.code benchcases/repeat_test.go /func repeatBuiltin/,/^}/
+
+Теперь измерим обе функции на одинаковом входе.
+
+* Бонус: одинаковая нагрузка для сравнения
+
+.code benchcases/repeat_test.go /func BenchmarkRepeatConcat/,/^}/
+.code benchcases/repeat_test.go /func BenchmarkRepeatBuiltin/,/^}/
+
+Одна операция — повторить строку `"go"` 100 раз.
+Отличается только реализация; вход и ожидаемый результат совпадают.
+
+* Бонус: зачем несколько запусков и benchstat
+
+  $ go test ./06-testing/benchcases -run='^$' \
+      -bench=Repeat -count=6 -benchtime=100ms > /tmp/repeat.txt
+  $ benchstat /tmp/repeat.txt
+
+`-count=6` повторяет измерение; `>` сохраняет stdout в файл.
+benchstat — отдельный инструмент golang.org/x/perf, который сводит серию замеров.
+
+  RepeatConcat-12     3.110µ ± 5%
+  RepeatBuiltin-12   68.02n ± 2%
+
+Каждая строка — серия для одной реализации. Сравниваем одинаковую операцию.
+`µ` — микросекунды, `n` — наносекунды на операцию.
+Медиана — середина серии; ± показывает диапазон неопределённости оценки.
+
+* Example: выполняемый пример использования
+
+Example показывает читателю вызов API и одновременно проверяет его результат.
+
+.code word2/word_test.go /func ExampleIsPalindrome/,/^}/
+
+  $ go test ./06-testing/word2 -run '^ExampleIsPalindrome$'
+  ok .../06-testing/word2
+
+go test запускает Example и сравнивает stdout с текстом после «// Output:».
+Этот же пример может показываться в документации пакета.
+
+* Example: неверный Output даёт FAIL
+
+В примере печатаются true и false.
+Если заменить только последнюю строку комментария на «// true»:
+
+  --- FAIL: ExampleIsPalindrome
+  got:
+  true
+  false
+  want:
+  true
+  true
+
+Example стал таким же красным сигналом регрессии, как обычный тест.
+Без Output пример компилируется, но go test его не выполняет.
+
+* Разворачиваем строку: как будем проверять?
+
+Контракт Reverse: развернуть порядок рун в строке с корректным UTF-8.
+
+  Reverse("Go!") == "!oG"
+  Reverse("") == ""
+
+Несколько примеров проходят.
+Какие общие свойства результата можно проверить для множества строк?
+
+* Два свойства Reverse
+
+Для любой строки s с корректным UTF-8:
+
+- Reverse(s) тоже содержит корректный UTF-8.
+- Reverse(Reverse(s)) == s.
+
+Обычные тесты проверяют конкретные ответы: `"Go!"` → `"!oG"`.
+Проверка свойств дополняет их.
+
+Функция, которая всегда возвращает s, тоже проходит эти два свойства.
+Поэтому примеры с известным ответом всё ещё нужны.
+
+* Фаззинг: от начальных строк к новым входам
+
+Фаззинг автоматически создаёт входы и запускает на них нашу проверку.
+
+- `f.Add` задаёт начальные примеры — seeds.
+- Go изменяет их байты и длину, пробует новые сочетания.
+- Входы, которые открывают новые пути кода, помогают дальнейшему поиску.
+- При ошибке Go пытается уменьшить вход и сохраняет его для повторения.
+
+Начальные строки `"hello"`, `""`, `"123"` не ограничивают поиск ASCII.
+Движок может получить строку с многобайтовой руной или некорректным UTF-8.
+
+`*testing.F` управляет фаззингом; `f.Fuzz` принимает функцию проверки входа.
+
+* Фаззинг: код проверки свойств
+
+`utf8.ValidString` проверяет корректность UTF-8.
+`t.Skip` пропускает входы вне нашего контракта.
+
+.code fuzzreverse/reverse_test.go /func FuzzReverse/,/^}/
+
+* Фаззинг: что не так с реализацией?
+
+.code fuzzreverse/reverse.go /func Reverse/,/^}/
+
+  $ go test ./06-testing/fuzzreverse
+  ok .../06-testing/fuzzreverse
+
+Начальные строки проходят.
+Какой вход нарушит одно из наших свойств?
+
+* Фаззинг: запуск и найденная ошибка
+
+  $ go test ./06-testing/fuzzreverse -run='^$' \
+      -fuzz='^FuzzReverse$' -fuzztime=2s
+
+`-fuzz` выбирает фаззинг-тест; `-fuzztime=2s` ограничивает время поиска.
+`-run='^$'` отключает обычные Test и Example.
+
+Один возможный найденный вход — `"é"`:
+
+  UTF-8 вход:     c3 a9
+  после Reverse: a9 c3    ← некорректный UTF-8
+
+Конкретный вход и время обнаружения могут отличаться.
+Падение сохраняется в `testdata/fuzz/FuzzReverse/` и повторяется обычным go test.
+
+* Разворот рун и регрессионный тест
+
+.code runereverse/reverse.go /func Reverse/,/^}/
+.code runereverse/reverse_test.go /func TestRegression/,/^}/
+
+  $ go test ./06-testing/runereverse \
+      -fuzz='^FuzzReverse$' -fuzztime=2s
+
+Фаззинг помогает найти вход; обычный тест хранит понятную проверку исправления.
+
+* Подтесты и параллельное выполнение
+
+`t.Run` запускает подтест.
+Обычно родитель ждёт, пока функция подтеста закончится.
+
+Если подтест вызвал `t.Parallel()`:
+
+- Подтест приостанавливается на этом вызове.
+- `t.Run` возвращается; родитель продолжает свою функцию.
+- После возврата функции родителя параллельные дети могут продолжиться.
+
+Родительский тест завершится только после всех своих подтестов.
+Порядок продолжения параллельных детей не гарантирован.
+
+* Один параллельный подтест: код и вывод
+
+.code parallel/parallel_test.go /func TestOrder/,/^}/
+
+  $ go test ./06-testing/parallel -v -run '^TestOrder$'
+
+Сообщения t.Log идут в таком порядке:
+
+  parent starts
+  child pauses
+  parent returns
+  child continues
+
+* Два параллельных подтеста: вопрос
+
+.code parallel/parallel_test.go /func TestTwoChildren/,/^}/
+
+В каком порядке могут появиться сообщения t.Log?
+Что обязано быть раньше, а что может поменяться местами?
+
+* Два параллельных подтеста: разбор
+
+  $ go test ./06-testing/parallel -v -run '^TestTwoChildren$'
+
+Обязательное начало сообщений t.Log:
+
+  parent starts
+  first pauses
+  second pauses
+  parent returns
+
+Затем возможны оба порядка:
+
+  first continues      | second continues
+  second continues     | first continues
+
+Оба Run достигают Parallel до возврата родителя.
+После этого порядок детей выбирает планировщик.
+
+* Fixtures: подготовить ресурс для теста
+
+Fixture — подготовленные данные или ресурс, которые нужны тесту.
+Например, временный файл для проверки файловой функции.
+
+- `t.TempDir()` создаёт временный каталог и удаляет его после теста и подтестов.
+- `t.Cleanup(fn)` регистрирует очистку после завершения теста и всех его детей.
+- Очистки вызываются в обратном порядке регистрации.
+
+Helper может одновременно создать ресурс и зарегистрировать его очистку.
+Тогда каждый вызывающий тест получает готовый ресурс.
+
+* Fixture: временный файл
+
+`os.CreateTemp` создаёт и открывает файл в указанном каталоге.
+`f.Name()` возвращает его имя; `f.Close()` закрывает открытый файл.
+
+.code fixtures/fixture_test.go /func newFile/,/^}/
+
+* Cleanup и defer: вопрос
+
+`defer` выполняется при возврате текущей функции.
+`t.Cleanup` ждёт завершения всех её подтестов.
+
+.code parallel/parallel_test.go /func TestCleanupOrder/,/^}/
+
+В каком порядке появятся четыре сообщения?
+
+* Cleanup и defer: разбор
+
+  $ go test ./06-testing/parallel -v -run '^TestCleanupOrder$'
+
+Сообщения t.Log:
+
+  defer runs
+  child uses resource
+  cleanup second
+  cleanup first
+
+defer выполняется при выходе из функции родителя.
+Затем продолжает работу ребёнок.
+Когда все дети закончились, Cleanup освобождает ресурсы в обратном порядке.
+
+* Бонус: подготовка пакета через TestMain
+
+«TestMain(m *testing.M)» запускает подготовку и очистку вокруг тестов пакета.
+`m.Run()` запускает их и возвращает код завершения.
+
+.code testmain/main_test.go /func TestMain/,/^}/
+
+  $ go test ./06-testing/testmain -v
+  setup
+  ... TestExample ...
+  teardown
+
+`os.Exit(code)` передаёт код результата процессу; defer при os.Exit не выполняется.
+
+* Бонус: большой ответ в golden-файле
+
+Golden-файл хранит ожидаемый результат, когда его неудобно помещать в код.
+Каталог `testdata` используется для тестовых данных.
+
+.code golden/golden_test.go /func TestGolden/,/^}/
+
+  $ go test ./06-testing/golden
+  ok .../06-testing/golden
+
+Эталон обновляют после проверки нового поведения, а не для сокрытия FAIL.
+
+* Тест и фоновые горутины: кто кого ждёт?
+
+Возврат функции Test не ждёт произвольные горутины, запущенные через `go`.
+
+  Test запустил worker → Test вернулся → worker ещё работает
+
+Worker может обратиться к `t` уже после завершения теста.
+Когда testing уже завершил тест, поздний `t.Error` вызывает panic.
+
+Если все тесты закончились, тестовый процесс может выйти раньше worker.
+Тогда позднее обращение вообще не произойдёт и panic не будет виден.
+Отсутствие panic не подтверждает, что worker закончил работу.
+
+* Остановить worker и дождаться завершения
+
+`cancel()` сообщает об отмене; сам по себе он не ждёт выхода worker.
+`wg.Wait()` ждёт, пока worker выполнит `wg.Done()`.
+
+.code worker/worker_test.go /func TestWorker/,/^}/
+
+defer выполняются в обратном порядке: сначала cancel, затем Wait.
+Worker получает сигнал, выходит и вызывает Done.
+
+* Race detector: вопрос
+
+.code race/race_test.go /func TestRace/,/^}/
+
+Защищает ли WaitGroup доступ к i?
+
+* Race detector: разбор
+
+  $ go test -race ./06-testing/race
+  WARNING: DATA RACE
+  ...
+  --- FAIL: TestRace
+
+Ожидаемый FAIL: этот учебный тест содержит гонку.
+`-race` добавляет проверку конфликтующих обращений во время выполнения.
+
+Wait в конце не защищает записи друг от друга и не защищает раннее чтение.
+Нужна синхронизация доступа: например, mutex или передача результата по каналу.
+
+Успешный запуск с -race не доказывает отсутствие гонок на всех путях программы.
+
+* Как выбирать проверку
+
+- Есть конкретный ожидаемый ответ → обычный Test, удобно с таблицей случаев.
+- Нужен пример использования API → Example с Output.
+- Есть общее свойство входов → fuzz callback плюс конкретные регрессионные тесты.
+- Измеряем стоимость операции → Benchmark и несколько измерений.
+- Зависимость должна выполнить действие → mock и ожидаемый вызов.
+
+В тестах нужны понятные сообщения об ошибках и очистка ресурсов.
+Для горутин: сигнал остановки и подтверждение завершения.

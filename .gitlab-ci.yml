@@ -3,84 +3,18 @@ variables:
 
 pages:
   stage: deploy
-  image: $REGISTRY/build:latest
-  before_script: # Install present and wget
-    - apt-get update -y && apt-get install -y wget curl ca-certificates
-    - go install golang.org/x/tools/cmd/present@latest
+  image: golang:1.27-bookworm
+  timeout: 15 minutes
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends python3 wget ca-certificates
   script:
-    # Run present server
-    - |
-      cd lectures
-      $(go env GOPATH)/bin/present -http=:3999 &
-      echo $! > /tmp/present.pid
-      for i in $(seq 1 40); do
-        if curl -sSf http://127.0.0.1:3999/ >/dev/null; then break; fi
-        sleep 0.5
-      done
-      cd - >/dev/null
-    # Mirror site via wget
-    - |
-      mkdir -p public
-      wget -r -np -nH -E -k -p -P public http://127.0.0.1:3999/ || true
-      # Минимальный пост-процесс: поправить абсолютный префикс в slides.js, чтобы CSS подхватывался на project site
-      PAGE_PATH="$(printf '%s' "${CI_PAGES_URL}" | sed -E 's#https?://[^/]+##')"
-      if [ -z "${PAGE_PATH}" ] || [ "${PAGE_PATH}" = "/" ]; then
-        PREFIX="/"
-      else
-        case "${PAGE_PATH}" in
-          */) ;;
-          *) PAGE_PATH="${PAGE_PATH}/" ;;
-        esac
-        PREFIX="${PAGE_PATH}"
-      fi
-      if [ -f public/static/slides.js ]; then
-        # Установим правильный префикс в slides.js
-        sed -i "s|var PERMANENT_URL_PREFIX = '/static/';|var PERMANENT_URL_PREFIX = '${PREFIX}static/';|" public/static/slides.js || true
-      fi
-      # Явно докачаем динамически подключаемые ресурсы, которые wget не видит в HTML
-      mkdir -p public/static
-      (curl -fsSL http://127.0.0.1:3999/static/styles.css -o public/static/styles.css || \
-        wget -q -O public/static/styles.css http://127.0.0.1:3999/static/styles.css || true)
-      (curl -fsSL http://127.0.0.1:3999/play.js -o public/play.js || \
-        wget -q -O public/play.js http://127.0.0.1:3999/play.js || true)
-      # Логирование
-      echo "::group::Mirror debug"
-      echo "CI_PAGES_URL=${CI_PAGES_URL}"
-      echo "PREFIX=${PREFIX}"
-      echo "== tree public (depth 2) =="
-      find public -maxdepth 2 -type d | sort
-      echo "== static listing =="
-      ls -la public/static || true
-      if [ -f public/static/slides.js ]; then
-        echo "== slides.js PERMANENT_URL_PREFIX =="
-        grep -n "PERMANENT_URL_PREFIX" public/static/slides.js || true
-      fi
-      if [ -f public/static/styles.css ]; then
-        echo "styles.css present: $(wc -c < public/static/styles.css) bytes"
-      else
-        echo "styles.css missing under public/static" >&2
-      fi
-      if [ -f public/play.js ]; then
-        echo "play.js present: $(wc -c < public/play.js) bytes"
-      else
-        echo "play.js missing under public/" >&2
-      fi
-      echo "== sample lecture HTML referencing slides.js =="
-      find public -name 'lecture.slide.html' | head -n 3 | while read -r f; do
-        echo "--- $f"; grep -n "slides.js\|<base" "$f" || true; done
-      echo "::endgroup::"
-    # Stop present
-    - |
-      if [ -f /tmp/present.pid ]; then kill $(cat /tmp/present.pid) || true; fi
+    - python3 tools/build_pages.py --source lectures --dest public --base-url "$CI_PAGES_URL"
   pages:
-    # The folder that contains the files to be exposed at the Page URL
     publish: public
   rules:
-    # Запускать деплой только для публичных репозиториев (содержат public-),
-    # не запускать для студенческих (содержат students-), и только с дефолтной ветки
+    # Публикуем только из дефолтной ветки public-репозитория, не из студенческих.
     - if: '$CI_PROJECT_PATH =~ /\/public-/ && $CI_PROJECT_PATH !~ /\/students-/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      # changes:
-      #   - lectures/**
 
 grade:
   image: $REGISTRY/testenv:latest

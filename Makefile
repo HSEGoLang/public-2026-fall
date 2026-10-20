@@ -10,7 +10,7 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN_VERSION)
 HELP_FUN = \
 	%help; while(<>){push@{$$help{$$2//'options'}},[$$1,$$3] \
 	if/^([\w-_]+)\s*:.*\#\#(?:@(\w+))?\s(.*)$$/}; \
-    print"$$_:\n", map"  $$_->[0]".(" "x(20-length($$_->[0])))."$$_->[1]\n",\
+    print"$$_:\n", map"  $$_->[0]".(" "x(28-length($$_->[0])))."$$_->[1]\n",\
     @{$$help{$$_}},"\n" for keys %help; \
 
 args := $(wordlist 2, 100, $(MAKECMDGOALS))
@@ -56,6 +56,12 @@ rebase-on-public: ##@Git Rebase on public repo
 	git remote add public-repo git@gitlab.manytask.org:hse/go/public-2026-fall.git || true
 	git fetch public-repo
 	git rebase public-repo/main
+
+.PHONY: rebase-on-public-github
+rebase-on-public-github: ##@Git Rebase on public repo from GitHub
+	git remote get-url public-repo-github >/dev/null 2>&1 || git remote add public-repo-github https://github.com/HSEGoLang/public-2026-fall.git
+	git fetch public-repo-github
+	git rebase public-repo-github/main
 
 %::
 	echo $(MESSAGE)

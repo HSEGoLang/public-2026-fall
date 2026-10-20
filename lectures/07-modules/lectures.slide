@@ -1,0 +1,766 @@
+Модули и зависимости
+Лекция 7
+
+Максим Иванов
+
+* Задача: программа растёт
+
+Приветствие пока живёт в одном файле.
+
+.code examples/01-hello/hello.go
+
+  $ cd examples/01-hello
+  $ go run .
+  Hello, world!
+
+Выделим пакет для строк, проверим его через `cmp`, затем сделаем библиотекой.
+Папки `examples/...` содержат готовые этапы; пути указаны от `lectures/07-modules`.
+
+* Файл, пакет, модуль
+
+*Пакет* — исходные файлы одной директории, компилируемые вместе.
+*Модуль* — набор пакетов, которые выпускаются и версионируются вместе.
+
+  hello/                 # корень модуля
+  ├── go.mod
+  ├── hello.go           # package main
+  └── morestrings/
+      └── reverse.go     # package morestrings
+
+- `go.mod` объявляет путь модуля и его зависимости.
+- Новый `go.mod` во вложенной папке начинает *другой* модуль.
+
+* Создать модуль
+
+В новой пустой директории:
+
+  $ mkdir hello
+  $ cd hello
+  $ go mod init example.com/hello
+  go: creating new go.mod: module example.com/hello
+  $ go mod edit -go=1.27.0
+  $ cat go.mod
+  module example.com/hello
+
+  go 1.27.0
+
+`example.com/hello` — имя проекта для учебных локальных примеров.
+`go` задаёт минимальную версию Go и режим языка пакетов модуля.
+
+* Путь модуля и путь пакета
+
+Путь импорта нашего пакета = путь модуля + путь каталога от его корня.
+
+  module example.com/hello
+  morestrings/reverse.go → example.com/hello/morestrings
+
+  import "example.com/hello/morestrings"
+
+Имя в `package` обычно совпадает с последним компонентом пути, но не обязано:
+
+  import "math/rand/v2" // внутри библиотеки: package rand
+
+Последний компонент — `v2`, а имя пакета в Go-коде — `rand`.
+
+* Библиотечный пакет
+
+`examples/02-packages/morestrings/reverse.go`:
+
+.code examples/02-packages/morestrings/reverse.go
+
+`ReverseRunes` экспортируется: имя начинается с заглавной буквы.
+Этот пакет не содержит `main` и не создаёт отдельную команду.
+
+* Использовать свой пакет
+
+`examples/02-packages/hello.go`:
+
+.code examples/02-packages/hello.go
+
+  $ cd examples/02-packages
+  $ go run .
+  Hello, Go!
+
+* Запустить и собрать программу
+
+Из `examples/02-packages`:
+
+  $ go run .                  # собрать и сразу запустить
+  Hello, Go!
+  $ go build -o hello .        # сохранить исполняемый файл
+  $ ./hello                    # запустить сохранённый файл
+  Hello, Go!
+
+`go`build` можно вызвать и для библиотечного пакета:
+
+  $ go build ./morestrings
+
+Библиотека проверяется и компилируется; исполняемый файл для неё не создаётся.
+
+* Установить свою программу
+
+`go`install` собирает пакет `main` и сохраняет готовую программу
+в *каталог*установки*. Саму программу эта команда не запускает.
+
+`GOBIN` — переменная окружения с путём к этому каталогу.
+Из `examples/02-packages`:
+
+  $ GOBIN="$PWD/bin" go install .
+  $ ./bin/hello
+  Hello, Go!
+
+Если `GOBIN` не задан, обычно используется `$GOPATH/bin`.
+Windows (Git Bash): `GOBIN="$(pwd`-W)/bin"` вместо `GOBIN="$PWD/bin"`.
+
+* Бонус: два кеша
+
+Кеш *сборки* содержит результаты компиляции.
+Кеш *модулей* содержит скачанные исходники и метаданные версий.
+
+  $ go env GOCACHE GOMODCACHE
+
+Конкретные абсолютные пути зависят от окружения.
+
+- `go`clean`-cache` очищает кеш сборки.
+- `go`clean`-modcache` очищает весь кеш модулей.
+
+После очистки может понадобиться повторная загрузка зависимостей.
+
+* Путь импорта: вопрос
+
+  module example.com/hello
+
+  hello/
+  ├── go.mod
+  ├── hello.go
+  └── morestrings/reverse.go
+
+Какую строку написать в `hello.go`?
+
+  import "morestrings"
+  import "./morestrings"
+  import "example.com/hello/morestrings"
+
+Что изменится в пути импорта, если переименовать весь каталог `hello/`?
+
+* Путь импорта: разбор
+
+  import "example.com/hello/morestrings"
+
+- `example.com/hello` берётся из `go.mod`.
+- `/morestrings` — каталог пакета внутри модуля.
+- Путь к каталогу проекта на компьютере в импорт не входит.
+
+Можно переместить проект из `/home/me/hello` в `/home/me/projects/demo`:
+путь импорта останется тем же, пока не меняются `go.mod` и каталог пакета.
+
+* Чужой пакет помогает проверить результат
+
+Проверим `ReverseRunes`: сравним вычисленный результат с ожидаемой строкой.
+При несовпадении `cmp.Diff(want,`got)` покажет различия.
+
+  import "github.com/google/go-cmp/cmp"
+
+.code examples/03-cmp/hello.go /func main/,$
+
+`cmp` — пакет из модуля `github.com/google/go-cmp`.
+
+* Импорт уже есть: достаточно tidy
+
+В коде уже есть импорт `cmp`, а в `go.mod` пока нет `require`.
+`go`mod`tidy` находит недостающий модуль, скачивает его и добавляет требование.
+
+  $ go mod tidy
+  go: found github.com/google/go-cmp/cmp in github.com/google/go-cmp v0.7.0
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.7.0
+
+Это один запуск: для отсутствующего модуля `tidy` ищет актуальную версию.
+Предварительный `go`get` *не*обязателен*.
+
+* Выбрать конкретную версию
+
+Для воспроизводимого примера выберем `go-cmp`v0.5.5` явно:
+
+  $ go get github.com/google/go-cmp/cmp@v0.5.5
+  $ go mod tidy
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.5.5
+
+В `go.mod`:
+
+  require github.com/google/go-cmp v0.5.5
+
+`get` принимает путь пакета; требование записывается для целого модуля.
+Готовый `examples/03-cmp` уже содержит эту версию.
+
+* Результат проверки ReverseRunes
+
+Из `examples/03-cmp`:
+
+  $ go run .
+  ReverseRunes: mismatch (-want +got)
+    string(
+  -   "Hello, world!",
+  +   "Hello, Go!",
+    )
+
+`ReverseRunes("!oG`,olleH")` дала `Hello,`Go!`.
+Ожидание `Hello,`world!` здесь намеренно неверно: мы показали ветку ошибки.
+Пробелы в `cmp.Diff` могут различаться между запусками.
+
+* go.mod и go.sum
+
+- `go.mod` задаёт путь модуля, минимальный Go и требования зависимостей.
+- `go.sum` содержит контрольные суммы скачанных модулей и их `go.mod`.
+- Оба файла обычно коммитят вместе с исходниками.
+
+Схема записи `go.sum` (хэши сокращены):
+
+  github.com/google/go-cmp v0.5.5 h1:Khx7…
+  github.com/google/go-cmp v0.5.5/go.mod h1:v8dT…
+
+`go.sum` не является списком выбранных версий или lock-файлом.
+Для выбранных версий используем `go`list`-m`all`.
+
+* tidy и изменение версии
+
+`tidy` согласует `go.mod` и `go.sum` с импортами и тестами:
+добавляет недостающее и убирает ненужное. Уже выбранное массово не обновляет.
+
+Из `examples/03-cmp`:
+
+  $ go get github.com/google/go-cmp/cmp@v0.6.0
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.6.0
+  $ go get github.com/google/go-cmp/cmp@v0.5.5
+  $ go mod tidy
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.5.5
+
+Изменение требования к версии — отдельное действие, которым управляем явно.
+
+* Бонус: обновить зависимости проекта
+
+`./...` выбирает пакеты текущего каталога и подкаталогов.
+`-u` ищет более новые версии модулей, из которых эти пакеты получают импорты.
+
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.5.5
+  $ go get -u ./...
+  go: upgraded github.com/google/go-cmp v0.5.5 => v0.7.0
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.7.0
+
+Это результат одного запуска; доступные релизы меняются.
+Для следующих примеров вернём `cmp@v0.5.5` командой `go`get`.
+
+* Бонус: почему этот модуль нужен?
+
+В `examples/03-cmp` выбрана версия `go-cmp`v0.5.5`.
+`why` ищет цепочку *импортов*пакетов* от нашего кода:
+
+  $ go mod why golang.org/x/xerrors
+  # golang.org/x/xerrors
+  example.com/hello
+  github.com/google/go-cmp/cmp
+  github.com/google/go-cmp/cmp.test
+  github.com/google/go-cmp/cmp/cmpopts
+  golang.org/x/xerrors
+
+`xerrors` нужен тестам зависимости; наш `main` его напрямую не импортирует.
+
+* Бонус: требования модулей в graph
+
+Тот же `examples/03-cmp`; показаны две строки полного вывода:
+
+  $ go mod graph
+  example.com/hello github.com/google/go-cmp@v0.5.5
+  github.com/google/go-cmp@v0.5.5 golang.org/x/xerrors@v0.0.0-20191204190536-9bdfabe68543
+
+В каждой строке: *кто*требует* → *какой*модуль*и*версию*.
+
+- `hello` требует модуль `go-cmp`v0.5.5`.
+- Его `go.mod` требует указанную версию `xerrors`.
+
+`why` объясняет цепочку импортов *пакетов*; `graph` показывает требования *модулей*.
+
+* morestrings становится отдельным модулем
+
+Хотим использовать `ReverseRunes` в нескольких проектах.
+Переносим знакомый пакет из `hello/morestrings` в соседний самостоятельный модуль:
+
+  examples/04-local/
+  ├── hello/go.mod        # module example.com/hello
+  └── morestrings/
+      ├── go.mod          # module example.com/morestrings
+      └── reverse.go      # прежняя ReverseRunes
+
+В `hello` меняется путь импорта:
+
+  import "example.com/morestrings"
+
+Go ещё нужно сообщить, что исходники этого модуля лежат в соседней папке.
+
+* Связать два локальных модуля
+
+Из `examples/04-local/hello`, где код импортирует `example.com/morestrings`:
+
+  $ go mod edit -replace=example.com/morestrings=../morestrings
+  $ go mod edit -require=example.com/morestrings@v0.0.0
+
+В `go.mod` появились две строки:
+
+  require example.com/morestrings v0.0.0
+  replace example.com/morestrings => ../morestrings
+
+  $ go run .
+  Hello, Go!
+
+`require` объявляет зависимость; `replace` задаёт, где взять её исходники.
+
+* replace: вопрос
+
+`hello` импортирует `example.com/morestrings`. В `go.mod` пока только:
+
+  module example.com/hello
+
+  go 1.27.0
+
+  replace example.com/morestrings => ../morestrings
+
+В `../morestrings` есть нужные исходники и `go.mod`.
+
+Достаточно ли этого для `go`run`.`?
+Какое требование сможет добавить `go`mod`tidy`, увидев импорт?
+
+* replace: два способа добавить require
+
+Одна строка `replace` оставляет зависимость без требования версии:
+
+  ... is replaced but not required ...
+
+После `go`mod`edit`-replace=example.com/morestrings=../morestrings` выбираем способ:
+
+  # Явно указать техническую версию
+  $ go mod edit -require=example.com/morestrings@v0.0.0
+
+  # Или поручить Go добавить require по импорту
+  $ go mod tidy
+
+Оба способа дают рабочий запуск: `Hello,`Go!`.
+`tidy` может записать длинную техническую версию вместо `v0.0.0`.
+
+* Проверка переезжает в morestrings
+
+Проверку разворота удобно вызывать повторно из разных программ.
+Добавим в `morestrings` функцию `CheckReverse(input,`want)`:
+
+.code examples/05-mvs/morestrings/check.go
+
+Она возвращает описание ошибки или пустую строку при совпадении.
+Теперь `cmp` импортирует *библиотека* `morestrings`, а не её пользователь.
+
+  // morestrings/go.mod
+  require github.com/google/go-cmp v0.5.5
+
+* Ещё одна библиотека использует тот же cmp
+
+Новый пакет `moreints` разворачивает срез чисел:
+`Reverse([]int{3,`2,`1})` возвращает `[]int{1,`2,`3}`, сохраняя исходный срез.
+Добавим такую же проверку результата:
+
+.code examples/05-mvs/moreints/check.go
+
+Автор `moreints` уже перешёл на более новую версию:
+
+  // moreints/go.mod
+  require github.com/google/go-cmp v0.6.0
+
+`hello` использует обе библиотеки. Какую версию общей зависимости выбрать?
+
+* Выбор версии: вопрос
+
+`require` задаёт минимальное требование к версии.
+Для одного пути модуля Go выбирает наибольший из требуемых минимумов.
+
+  hello → morestrings → go-cmp v0.5.5
+        → moreints    → go-cmp v0.6.0
+
+Код обеих библиотек работает с `cmp`v0.6.0`.
+
+Какая версия `cmp` попадёт в сборку? Будут ли у библиотек разные копии?
+Выберется ли доступная `v0.7.0` только потому, что она уже выпущена?
+
+* Выбор версии: разбор
+
+*Minimal*Version*Selection* (MVS): выбираем минимальную версию,
+удовлетворяющую всем требованиям. Здесь это максимум из `v0.5.5` и `v0.6.0`.
+
+Из `examples/05-mvs/hello`:
+
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.6.0
+  $ go run .
+  morestrings: OK
+  moreints: OK
+
+Обе проверки используют одну выбранную версию `cmp`.
+`v0.7.0` сама по себе в требованиях не появилась.
+
+* Прямая и косвенная зависимость
+
+`hello` импортирует `morestrings` и `moreints`; они импортируют `cmp`.
+После `go`mod`tidy` в `hello/go.mod`:
+
+  require (
+      example.com/moreints v0.0.0
+      example.com/morestrings v0.0.0
+  )
+  require github.com/google/go-cmp v0.6.0 // indirect
+
+`indirect` означает: пакеты `hello` сами не импортируют пакеты `go-cmp`.
+Go добавляет и обновляет этот комментарий автоматически при `tidy`.
+Вручную управлять комментарием не нужно.
+
+* Версия Go и версия библиотеки
+
+Два независимых номера в одном `go.mod`:
+
+  go 1.27.0
+  require github.com/google/go-cmp v0.6.0 // indirect
+
+- `go`1.27.0` — минимальная версия Go для сборки и режим языка проекта.
+- `v0.6.0` — выбранное требование к библиотеке `go-cmp`.
+
+  $ go version
+  go version go1.27.1 darwin/arm64
+
+Go 1.27.1 удовлетворяет минимуму 1.27.0.
+Если Go слишком старый, нужно выбрать более новый Go, а не менять номер `cmp`.
+
+* Работать над тремя модулями вместе
+
+Продолжаем этап `05-mvs`: `hello` использует `morestrings` и `moreints`.
+
+  project/
+  ├── hello/go.mod
+  ├── morestrings/go.mod
+  └── moreints/go.mod
+
+Сейчас в `hello/go.mod` две локальные замены `replace`.
+*Workspace* (рабочая область) связывает эти модули общим файлом `go.work`.
+
+Из каталога `project`, где `go.work` ещё нет:
+
+  $ go work init ./hello ./morestrings ./moreints
+  $ go work edit -go=1.27.0
+
+Библиотеки ещё не выпущены: уберём их фиктивные `require`v0.0.0` и замены.
+
+  $ cd hello
+  $ go mod edit -dropreplace=example.com/morestrings -droprequire=example.com/morestrings
+  $ go mod edit -dropreplace=example.com/moreints -droprequire=example.com/moreints
+
+* Что записано в go.work
+
+Go использует исходники всех трёх модулей, перечисленных в `go.work`:
+
+.code examples/06-workspace/go.work
+
+Из `hello`:
+
+  $ go run .
+  morestrings: OK
+  moreints: OK
+
+Наши библиотеки подключает `use`; требования к внешнему `cmp` остаются в `go.mod`.
+
+* Workspace и воспроизводимость
+
+Готовый результат — `examples/06-workspace`.
+Из его каталога `hello`:
+
+  $ go env GOWORK
+  .../06-workspace/go.work
+  $ go run .
+  morestrings: OK
+  moreints: OK
+
+`GOWORK=off` отключает рабочую область для одной команды.
+Для сборки без workspace добавим `require` на выпущенные версии библиотек
+либо вернём локальные `replace` и выполним `go`mod`tidy`.
+
+Перед выпуском проверьте модуль без случайного `go.work` из родительской папки.
+
+* Сохранить зависимости в vendor
+
+Хотим передать проект вместе с используемыми исходниками зависимостей.
+`vendor` — их обычная копия в каталоге проекта.
+
+Из `examples/05-mvs/hello`, где выбран `cmp`v0.6.0`:
+
+  $ go mod vendor
+  $ go run -mod=vendor .
+  morestrings: OK
+  moreints: OK
+
+`vendor/modules.txt` описывает версии скопированных модулей.
+При наличии `vendor` Go по умолчанию сверяет его с `go.mod` и собирает из копии.
+
+* Режимы -mod при сборке
+
+`-mod` управляет зависимостями при `go`run`, `go`build` и `go`test`:
+
+- `vendor` — брать исходники зависимостей из `vendor`.
+- `readonly` — использовать `go.mod`; изменения этого файла запрещены.
+- `mod` — использовать `go.mod`; изменения этого файла разрешены.
+
+  $ go run -mod=vendor .
+  $ go run -mod=readonly .
+  $ go run -mod=mod .
+
+`readonly` и `mod` учитывают локальные `replace`, остальное берут из кеша или сети.
+Эти два режима игнорируют `vendor`.
+
+Без переопределения флагов: есть `vendor` и в `go.mod` указано `go`1.14` или новее
+→ `vendor`; иначе → `readonly`. Здесь рассматриваем модуль вне workspace.
+
+* Обновление версии не обновляет копию
+
+До обновления: `go.mod` требует `cmp`v0.6.0`; в `vendor` лежит `v0.6.0`.
+Меняем требование и загружаем новую версию в кеш:
+
+  $ go get github.com/google/go-cmp@v0.7.0
+
+После команды:
+
+  go.mod              → cmp v0.7.0
+  vendor/modules.txt  → cmp v0.6.0
+  vendor/...          → прежние исходники v0.6.0
+
+`get` не переписывает `vendor`. Go обнаруживает разные версии:
+
+  $ go run .
+  go: inconsistent vendoring ...
+
+* Пересобрать vendor после обновления
+
+Пересоздадим копию по текущим требованиям:
+
+  $ go mod vendor
+  $ go list -m github.com/google/go-cmp
+  github.com/google/go-cmp v0.7.0
+  $ go run .
+  morestrings: OK
+  moreints: OK
+
+- `go`mod`tidy` согласует `go.mod` и `go.sum` с кодом.
+- `go`mod`vendor` обновляет каталог `vendor` и его `modules.txt`.
+
+`go`run`-mod=mod`.` позволяет запустить через кеш, но не обновляет `vendor`.
+
+* Выпустить библиотеку
+
+Хотим, чтобы другие разработчики могли скачать наш `morestrings`.
+Создаём пустой публичный GitHub-репозиторий `yourname/morestrings`.
+`yourname` — ваш логин. В библиотеке задаём путь:
+
+  module github.com/yourname/morestrings
+
+Из корня библиотеки:
+
+  $ git init -b main
+  $ git add .
+  $ git commit -m "Initial library"
+  $ git remote add origin https://github.com/yourname/morestrings.git
+  $ git push -u origin main
+  $ git tag v1.0.0
+  $ git push origin v1.0.0
+
+*Публикация*готова:* отдельно регистрировать модуль больше нигде не нужно.
+По `github.com/yourname/morestrings` в импорте Go сам находит репозиторий
+`https://github.com/yourname/morestrings` и версию по Git-тегу.
+
+* Версия и совместимость
+
+Версия модуля — `vMAJOR.MINOR.PATCH`.
+
+- `v1.0.1`: исправление ошибки с сохранением совместимости.
+- `v1.1.0`: новая возможность с сохранением совместимости.
+- `v2.0.0`: несовместимое изменение публичного API.
+- `v0.x.y`: стабильность API ещё не обещана.
+
+Потребитель в своём модуле:
+
+  $ go get github.com/yourname/morestrings@v1.0.0
+
+Новый релиз не изменяет уже опубликованные исходники старой версии.
+
+* Несовместимое изменение API: v2
+
+В первой версии `ReverseRunes` принимала и возвращала строку.
+В новой хотим работать со срезом рун: меняются имя и сигнатура функции.
+
+  // v1
+  func ReverseRunes(s string) string
+
+  // v2
+  func Reverse(s []rune) []rune
+
+Старый вызов больше не компилируется. Выпускаем новую мажорную версию.
+Для обычных модулей Go её путь получает суффикс `/v2`:
+
+  module github.com/yourname/morestrings/v2
+
+* Потребитель переходит на v2
+
+Имя пакета по-прежнему `morestrings`, но путь импорта новый:
+
+.code examples/07-v2/hello/hello.go
+
+  $ cd examples/07-v2/hello
+  $ go run .
+  Hello, Go!
+
+В `go.mod` потребителя:
+
+  require github.com/yourname/morestrings/v2 v2.0.0
+
+* Бонус: где хранить v2
+
+Новый путь модуля не требует определённого имени Git-ветки.
+Можно хранить v2 в отдельном каталоге или в корне другой ветки:
+
+  repo/                   repo/ (ветка v2 или main)
+  ├── go.mod              ├── go.mod  # module .../morestrings/v2
+  └── v2/                 └── reverse.go
+      ├── go.mod
+      └── reverse.go
+
+Для показанного major-подкаталога тег — `v2.0.0`.
+
+`gopkg.in` — сервис адресов Go-библиотек, направляющих к репозиториям на GitHub.
+У него особое написание версии: `gopkg.in/yaml.v3`, с `.v3` вместо `/v3`.
+
+* Бонус: коммит без тега
+
+Можно сослаться на коммит до выпуска релиза:
+
+  $ go get github.com/yourname/morestrings@<commit-hash>
+
+Go преобразует коммит в *pseudo-version*.
+Пример формата (не версия нашего учебного репозитория):
+
+  v0.0.0-20191109021931-daa7c04131f5
+  └ base ┘└ UTC timestamp ┘└ hash ┘
+
+Не набирайте её вручную: время и база проверяются по истории Git.
+Предпочитайте тег для стабильного выпуска.
+
+* Как go get получает исходники
+
+Разберём уже знакомую команду:
+
+  $ go get github.com/google/go-cmp/cmp@v0.5.5
+
+- Go определяет модуль пакета: `github.com/google/go-cmp`.
+- Просит выбранную версию у *module*proxy* — сервера, который отдаёт модули.
+- Получает `go.mod` и архив исходников, проверяет контрольные суммы.
+- Сохраняет их в *кеш*модулей* — общий каталог скачанных зависимостей.
+
+Последующий `go`run`.` использует эти исходники при сборке.
+Путь к кешу показывает `go`env`GOMODCACHE`; повторная загрузка обычно не нужна.
+
+* GOPROXY выбирает источник загрузки
+
+`GOPROXY` — настройка команды `go`: откуда скачивать отсутствующие модули.
+Обычное значение:
+
+  $ go env GOPROXY
+  https://proxy.golang.org,direct
+
+- Сначала запросить модуль у сервера `proxy.golang.org`.
+- Если версии там нет, `direct` разрешает найти её в Git-репозитории.
+- `GOPROXY=off` запрещает новые загрузки; уже скачанное остаётся доступным.
+
+Для опубликованного `github.com/yourname/morestrings` источником Git будет GitHub.
+Отдельная форма регистрации модуля для этого не нужна.
+
+* Бонус: протокол proxy
+
+Для модуля `github.com/google/go-cmp` proxy отдаёт:
+
+  /github.com/google/go-cmp/@v/list
+  /github.com/google/go-cmp/@v/v0.5.5.info
+  /github.com/google/go-cmp/@v/v0.5.5.mod
+  /github.com/google/go-cmp/@v/v0.5.5.zip
+
+`.info` — версия и время, `.mod` — манифест, `.zip` — исходники.
+
+  $ curl https://proxy.golang.org/github.com/google/go-cmp/@v/v0.5.5.info
+  {"Version":"v0.5.5","Time":"2021-03-03T20:48:37Z"}
+
+Запрос `@latest` меняется при новых релизах; зафиксированная версия — нет.
+
+* Бонус: свой адрес импорта
+
+Хотим свой короткий адрес импорта, сохранив исходники на GitHub.
+Реальный пример — `go.uber.org/atomic`:
+
+  import "go.uber.org/atomic"
+
+При *прямой* загрузке Go ищет адрес репозитория:
+
+  GET https://go.uber.org/atomic?go-get=1
+
+Существенная часть ответа:
+
+  <meta name="go-import"
+        content="go.uber.org/atomic git https://github.com/uber-go/atomic">
+
+Через proxy клиент может вообще не обращаться к домену собственного импорта.
+
+* Бонус: настроить свой короткий адрес
+
+Для нашего `morestrings` хотим импорт `go.example.org/morestrings`.
+Нужны свой домен, DNS-запись на веб-сервер и HTTPS.
+
+Настроим сервер: этот запрос возвращает HTML с метаданными в `<head>`:
+
+  GET https://go.example.org/morestrings?go-get=1
+  HTTP/1.1 200 OK
+  Content-Type: text/html
+
+  <html><head>
+    <meta name="go-import"
+          content="go.example.org/morestrings git https://github.com/yourname/morestrings">
+  </head></html>
+
+Можно отдавать статический HTML; специальный сервер на Go не нужен.
+В `go.mod` укажем `module`go.example.org/morestrings`, обновим импорты и выпустим тег.
+
+* Выбрать команду
+
+- Начать модуль → `go`mod`init`.
+- Добавить недостающие зависимости по импортам → `go`mod`tidy`.
+- Выбрать конкретную версию → `go`get`path@version`.
+- Узнать выбранные версии → `go`list`-m`all`.
+- Связать локальные модули → `replace` или `go.work`.
+- Обновить копию зависимостей в проекте → `go`mod`vendor`.
+- Собрать и установить свою программу → `go`install`.
+
+Перед запуском проверяем каталог модуля и активный `go.work`.
+
+* Самопроверка
+
+- Почему импорт `math/rand/v2` даёт имя пакета `rand`?
+- Что делает `go`install` и где появляется программа?
+- Когда достаточно `tidy`, а когда нужен `get` с версией?
+- Почему `morestrings` и `moreints` используют одну версию `cmp`?
+- Как `replace` и `tidy` вместе связывают локальную библиотеку?
+- Что меняется при переходе от `replace` к `go.work`?
+- Почему после обновления зависимости нужно заново создать `vendor`?
+
+.link https://go.dev/ref/mod Go Modules Reference
+.link https://go.dev/doc/tutorial/workspaces Работа с несколькими модулями

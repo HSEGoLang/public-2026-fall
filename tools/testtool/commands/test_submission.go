@@ -57,7 +57,7 @@ var testSubmissionCmd = &cobra.Command{
 			log.Fatalf("%s does not have %s directory", privateRepo, problem)
 		}
 
-		if err := testSubmission(studentRepo, privateRepo, problem, problem); err != nil {
+		if err := testSubmission(studentRepo, privateRepo, problem, filepath.Base(problem)); err != nil {
 			log.Fatal(err)
 		}
 	},
