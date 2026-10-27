@@ -1,5 +1,5 @@
 variables:
-  REGISTRY: gitlab.manytask.org:5050/hse/go/public-2026-fall
+  REGISTRY: registry.gitlab-standby.manytask.org/hse/go/public-2026-fall
 
 pages:
   stage: deploy

@@ -53,7 +53,7 @@ format: | $(GOLANGCI_LINT) ###@Code Format files
 
 .PHONY: rebase-on-public
 rebase-on-public: ##@Git Rebase on public repo
-	git remote add public-repo git@gitlab.manytask.org:hse/go/public-2026-fall.git || true
+	git remote add public-repo git@gitlab-standby.manytask.org:hse/go/public-2026-fall.git || true
 	git fetch public-repo
 	git rebase public-repo/main
 

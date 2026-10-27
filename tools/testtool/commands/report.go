@@ -9,7 +9,7 @@ import (
 
 var testingToken = ""
 
-const reportEndpoint = "https://app.manytask.org/api/hse-go-2026-fall/report"
+const reportEndpoint = "https://app-standby.manytask.org/api/hse-go-2026-fall/report"
 
 func reportTestResults(token string, task string, userID string, failed bool) error {
 	if failed {
