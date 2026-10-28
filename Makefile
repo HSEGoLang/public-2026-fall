@@ -1,5 +1,5 @@
 GO_TOOLCHAIN_VERSION := go1.27.1
-GOLANGCI_LINT_VERSION := v2.13.2
+GOLANGCI_LINT_VERSION := v2.14.0
 GOLANGCI_LINT := $(shell go env GOPATH)/bin/golangci-lint
 GO_MODULES := . lectures lectures/12-lowlevel/unix 15-Bonus/wasm/flappygopher
 

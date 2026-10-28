@@ -18,7 +18,7 @@
 
    `origin` должен указывать на ваш репозиторий в `students-2026-fall`. Репозиторий `public-2026-fall` — источник новых условий, решения туда отправлять не нужно.
 
-4. Установите [Go](https://go.dev/dl/). В текущем `Makefile` курса закреплены Go **1.27.1** и golangci-lint **v2.13.2**. После обновления репозитория сверяйте версии с `GO_TOOLCHAIN_VERSION` и `GOLANGCI_LINT_VERSION` в `Makefile`.
+4. Установите [Go](https://go.dev/dl/). В текущем `Makefile` курса закреплены Go **1.27.1** и golangci-lint **v2.14.0**. После обновления репозитория сверяйте версии с `GO_TOOLCHAIN_VERSION` и `GOLANGCI_LINT_VERSION` в `Makefile`.
 
    ```shell
    go version
@@ -40,11 +40,11 @@ go mod download
 На macOS/Linux:
 
 ```shell
-curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.2
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.14.0
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-На Windows используйте **Git Bash**. Скачайте архив для Windows из [релиза v2.13.2](https://github.com/golangci/golangci-lint/releases/tag/v2.13.2), распакуйте `golangci-lint.exe` в каталог `bin` своей домашней папки и выполните в Git Bash:
+На Windows используйте **Git Bash**. Скачайте архив для Windows из [релиза v2.14.0](https://github.com/golangci/golangci-lint/releases/tag/v2.14.0), распакуйте `golangci-lint.exe` в каталог `bin` своей домашней папки и выполните в Git Bash:
 
 ```shell
 export PATH="$HOME/bin:$PATH"
