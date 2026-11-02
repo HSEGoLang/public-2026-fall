@@ -63,8 +63,8 @@ import (
 	"flag"
 	"log"
 
-	"hse-go/06-BHW-Gitfame/gitfame/configs"
-	"hse-go/06-BHW-Gitfame/gitfame/internal"
+	"hse-go/07-BHW-01-Gitfame/gitfame/configs"
+	"hse-go/07-BHW-01-Gitfame/gitfame/internal"
 
 	"github.com/spf13/pflag"
 
@@ -81,8 +81,8 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"hse-go/06-BHW-Gitfame/gitfame/configs"
-	"hse-go/06-BHW-Gitfame/gitfame/internal"
+	"hse-go/07-BHW-01-Gitfame/gitfame/configs"
+	"hse-go/07-BHW-01-Gitfame/gitfame/internal"
 )
 ```
 
@@ -114,7 +114,7 @@ git.ListFiles(*flagRepository, *flagRevision)
 
 Неправильно:
 ```golang
-js := fmt.Sprintf("{\"name\":\"%s\",\"lines\":%d,\"commits\":%d,\"files\":%d}", author, lines[author], commits[author], files[author])
+js := fmt.Sprintf("{\"email\":\"%s\",\"lines\":%d,\"commits\":%d,\"files\":%d}", email, lines[email], commits[email], files[email])
 ```
 
 Правильно:
